@@ -20,6 +20,7 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertThat;
 
+import org.apache.kafka.connect.data.Decimal;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.junit.Test;
@@ -181,5 +182,104 @@ public class ConnectSchemaTranslatorTest {
 
     final Schema ksqlSchema = schemaTranslator.toKsqlSchema(connectSchema);
     assertThat(ksqlSchema.fields().size(), equalTo(0));
+  }
+
+  @Test
+  public void shouldIgnoreDecimalsWithUnknownScale() {
+    final String TEST_SCALE = "2";
+
+    final Schema connectSchema = SchemaBuilder
+        .struct()
+        .field("decimalField", SchemaBuilder.bytes().name(Decimal.LOGICAL_NAME)
+            .parameter("invalid.scale", TEST_SCALE).build())
+        .build();
+
+    final Schema ksqlSchema = schemaTranslator.toKsqlSchema(connectSchema);
+    assertThat(ksqlSchema.fields().size(), equalTo(0));
+  }
+
+  @Test
+  public void shouldIgnoreDecimalsWithUnsetParameters() {
+
+    final Schema connectSchema = SchemaBuilder
+        .struct()
+        .field("decimalField", SchemaBuilder.bytes().name(Decimal.LOGICAL_NAME).build())
+        .build();
+
+    final Schema ksqlSchema = schemaTranslator.toKsqlSchema(connectSchema);
+    assertThat(ksqlSchema.fields().size(), equalTo(0));
+  }
+
+  @Test
+  public void shouldTranslateDecimalsWithUnknownPrecision() {
+    final String DEFAULT_CONNECT_PRECISION = "64";
+    final String TEST_SCALE = "2";
+
+    final Schema connectSchema = SchemaBuilder
+        .struct()
+        .field("decimalField", Decimal.schema(Integer.parseInt(TEST_SCALE)))
+        .build();
+
+    final Schema ksqlSchema = schemaTranslator.toKsqlSchema(connectSchema);
+    assertThat(ksqlSchema.schema().type(), equalTo(Schema.Type.STRUCT));
+    assertThat(ksqlSchema.fields().size(), equalTo(connectSchema.fields().size()));
+
+    for (int i = 0; i < ksqlSchema.fields().size(); i++) {
+      assertThat(
+          ksqlSchema.fields().get(i).name(),
+          equalTo(connectSchema.fields().get(i).name().toUpperCase()));
+      assertThat(
+          ksqlSchema.fields().get(i).schema().type(),
+          equalTo(Schema.BYTES_SCHEMA.type())
+      );
+      assertThat(ksqlSchema.fields().get(i).schema().isOptional(), is(true));
+      assertThat(ksqlSchema.fields().get(i).schema().name(), equalTo(Decimal.LOGICAL_NAME));
+      assertThat(
+          ksqlSchema.fields().get(i).schema().parameters().get("scale"),
+          equalTo(TEST_SCALE)
+      );
+      assertThat(
+          ksqlSchema.fields().get(i).schema().parameters().get("precision"),
+          equalTo(DEFAULT_CONNECT_PRECISION)
+      );
+    }
+  }
+
+  @Test
+  public void shouldTranslateDecimalsWithKnownPrecision() {
+    final String TEST_PRECISION = "6";
+    final String TEST_SCALE = "2";
+
+    // SR/Connect will set the precision in the connect.decimal.precision parameter
+    // KSQL should convert it to 'precision' so it matches AVRO parameters
+    final Schema connectSchema = SchemaBuilder
+        .struct()
+        .field("decimalField", Decimal.builder(Integer.parseInt(TEST_SCALE))
+            .parameter("connect.decimal.precision", TEST_PRECISION).build())
+        .build();
+
+    final Schema ksqlSchema = schemaTranslator.toKsqlSchema(connectSchema);
+    assertThat(ksqlSchema.schema().type(), equalTo(Schema.Type.STRUCT));
+    assertThat(ksqlSchema.fields().size(), equalTo(connectSchema.fields().size()));
+
+    for (int i = 0; i < ksqlSchema.fields().size(); i++) {
+      assertThat(
+          ksqlSchema.fields().get(i).name(),
+          equalTo(connectSchema.fields().get(i).name().toUpperCase()));
+      assertThat(
+          ksqlSchema.fields().get(i).schema().type(),
+          equalTo(Schema.BYTES_SCHEMA.type())
+      );
+      assertThat(ksqlSchema.fields().get(i).schema().isOptional(), is(true));
+      assertThat(ksqlSchema.fields().get(i).schema().name(), equalTo(Decimal.LOGICAL_NAME));
+      assertThat(
+          ksqlSchema.fields().get(i).schema().parameters().get("scale"),
+          equalTo(TEST_SCALE)
+      );
+      assertThat(
+          ksqlSchema.fields().get(i).schema().parameters().get("precision"),
+          equalTo(TEST_PRECISION)
+      );
+    }
   }
 }

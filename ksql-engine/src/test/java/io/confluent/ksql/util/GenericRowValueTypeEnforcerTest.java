@@ -22,6 +22,8 @@ import static org.junit.Assert.fail;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.junit.Test;
 
+import java.math.BigDecimal;
+
 /**
  * Unit tests for class {@link GenericRowValueTypeEnforcer}.
  *
@@ -205,6 +207,34 @@ public class GenericRowValueTypeEnforcerTest {
       assertEquals(GenericRowValueTypeEnforcer.class.getName(),
                    e.getStackTrace()[0].getClassName());
     }
+  }
+
+  @Test
+  public void testEnforceDecimalOnValidBigDecimal() {
+    final int precision = 6;
+    final int scale = 2;
+
+    final SchemaBuilder schemaBuilder = SchemaBuilder.struct().field("decimal",
+        DecimalUtil.schema(precision, scale));
+    final GenericRowValueTypeEnforcer genericRowValueTypeEnforcer =
+        new GenericRowValueTypeEnforcer(schemaBuilder);
+
+    assertEquals(BigDecimal.valueOf(13.43),
+        genericRowValueTypeEnforcer.enforceFieldType(0, BigDecimal.valueOf(13.43)));
+  }
+
+  @Test
+  public void testEnforceDecimalOnValidString() {
+    final int precision = 6;
+    final int scale = 2;
+
+    final SchemaBuilder schemaBuilder = SchemaBuilder.struct().field("decimal",
+        DecimalUtil.schema(precision, scale));
+    final GenericRowValueTypeEnforcer genericRowValueTypeEnforcer =
+        new GenericRowValueTypeEnforcer(schemaBuilder);
+
+    assertEquals(BigDecimal.valueOf(13.43),
+        genericRowValueTypeEnforcer.enforceFieldType(0, "13.43"));
   }
 
   @Test

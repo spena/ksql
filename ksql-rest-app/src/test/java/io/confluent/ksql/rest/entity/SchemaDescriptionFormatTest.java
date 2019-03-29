@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module;
 import io.confluent.ksql.json.JsonMapper;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import org.junit.Test;
@@ -52,7 +53,8 @@ public class SchemaDescriptionFormatTest {
         "    \"schema\": {\n" +
         "      \"type\": \"INTEGER\",\n" +
         "      \"fields\": null,\n" +
-        "      \"memberSchema\": null\n" +
+        "      \"memberSchema\": null,\n" +
+        "      \"typeParameters\": null\n" +
         "    }\n" +
         "  },\n" +
         "  {\n" +
@@ -65,7 +67,8 @@ public class SchemaDescriptionFormatTest {
         "          \"schema\": {\n" +
         "            \"type\": \"STRING\",\n" +
         "            \"fields\": null,\n" +
-        "            \"memberSchema\": null\n" +
+        "            \"memberSchema\": null,\n" +
+        "            \"typeParameters\": null\n" +
         "          }\n" +
         "        },\n" +
         "        {\n" +
@@ -73,11 +76,13 @@ public class SchemaDescriptionFormatTest {
         "          \"schema\": {\n" +
         "            \"type\": \"INTEGER\",\n" +
         "            \"fields\": null,\n" +
-        "            \"memberSchema\": null\n" +
+        "            \"memberSchema\": null,\n" +
+        "            \"typeParameters\": null\n" +
         "          }\n" +
         "        }\n" +
         "      ],\n" +
-        "      \"memberSchema\": null\n" +
+        "      \"memberSchema\": null,\n" +
+        "      \"typeParameters\": null\n" +
         "    }\n" +
         "  }\n" +
         "]";
@@ -92,7 +97,7 @@ public class SchemaDescriptionFormatTest {
     assertThat(
         deserialized.get(0).getSchema(),
         equalTo(
-            new SchemaInfo(SchemaInfo.Type.INTEGER, null, null)));
+            new SchemaInfo(SchemaInfo.Type.INTEGER, null, null, null)));
     assertThat(deserialized.get(1).getName(), equalTo("l1struct"));
     final SchemaInfo structSchema = deserialized.get(1).getSchema();
     assertThat(structSchema.getType(), equalTo(SchemaInfo.Type.STRUCT));
@@ -102,12 +107,12 @@ public class SchemaDescriptionFormatTest {
     assertThat(
         structSchema.getFields().get().get(0).getSchema(),
         equalTo(
-            new SchemaInfo(SchemaInfo.Type.STRING, null, null)));
+            new SchemaInfo(SchemaInfo.Type.STRING, null, null, null)));
     assertThat(structSchema.getFields().get().get(1).getName(), equalTo("l2integer"));
     assertThat(
         structSchema.getFields().get().get(1).getSchema(),
         equalTo(
-            new SchemaInfo(SchemaInfo.Type.INTEGER, null, null)));
+            new SchemaInfo(SchemaInfo.Type.INTEGER, null, null, null)));
 
     shouldSerializeCorrectly(descriptionString, deserialized);
   }
@@ -122,9 +127,11 @@ public class SchemaDescriptionFormatTest {
         "      \"memberSchema\": {\n" +
         "        \"type\": \"STRING\",\n" +
         "        \"memberSchema\": null,\n" +
-        "        \"fields\": null\n" +
+        "        \"fields\": null,\n" +
+        "        \"typeParameters\": null\n" +
         "      },\n" +
-        "      \"fields\": null\n" +
+        "      \"fields\": null,\n" +
+        "      \"typeParameters\": null\n" +
         "    }\n" +
         "  }\n" +
         "]";
@@ -142,7 +149,44 @@ public class SchemaDescriptionFormatTest {
             new SchemaInfo(
                 SchemaInfo.Type.MAP,
                 null,
-                new SchemaInfo(SchemaInfo.Type.STRING, null, null))));
+                new SchemaInfo(SchemaInfo.Type.STRING, null, null, null),
+                null)));
+
+    shouldSerializeCorrectly(descriptionString, deserialized);
+  }
+
+  @Test
+  public void shouldFormatSchemaEntityCorrectlyForDecimal() throws IOException {
+    final String descriptionString = "[\n" +
+        "  {\n" +
+        "    \"name\": \"ldecimal\",\n" +
+        "    \"schema\": {\n" +
+        "      \"type\": \"DECIMAL\",\n" +
+        "      \"fields\": null,\n" +
+        "      \"memberSchema\": null,\n" +
+        "      \"typeParameters\": [\n" +
+        "        \"6\",\n" +
+        "        \"2\"\n" +
+        "      ]\n" +
+        "    }\n" +
+        "  }\n" +
+        "]";
+
+    final ObjectMapper objectMapper = JsonMapper.INSTANCE.mapper;
+    final List<FieldInfo> deserialized = objectMapper.readValue(
+        descriptionString, new TypeReference<List<FieldInfo>>(){});
+
+    // Test deserialization
+    assertThat(deserialized.size(), equalTo(1));
+    assertThat(deserialized.get(0).getName(), equalTo("ldecimal"));
+    assertThat(
+        deserialized.get(0).getSchema(),
+        equalTo(
+            new SchemaInfo(
+                SchemaInfo.Type.DECIMAL,
+                null,
+                null,
+                Arrays.asList("6", "2"))));
 
     shouldSerializeCorrectly(descriptionString, deserialized);
   }
@@ -157,9 +201,11 @@ public class SchemaDescriptionFormatTest {
         "      \"memberSchema\": {\n" +
         "        \"type\": \"STRING\",\n" +
         "        \"memberSchema\": null,\n" +
-        "        \"fields\": null\n" +
+        "        \"fields\": null,\n" +
+        "        \"typeParameters\": null\n" +
         "      },\n" +
-        "      \"fields\": null\n" +
+        "      \"fields\": null,\n" +
+        "      \"typeParameters\": null\n" +
         "    }\n" +
         "  }\n" +
         "]";
@@ -177,7 +223,8 @@ public class SchemaDescriptionFormatTest {
             new SchemaInfo(
                 SchemaInfo.Type.ARRAY,
                 null,
-                new SchemaInfo(SchemaInfo.Type.STRING, null, null))));
+                new SchemaInfo(SchemaInfo.Type.STRING, null, null, null),
+                null)));
 
     shouldSerializeCorrectly(descriptionString, deserialized);
   }

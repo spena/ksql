@@ -24,9 +24,12 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 
 import java.lang.reflect.Type;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
+import org.apache.kafka.connect.data.Decimal;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
@@ -111,6 +114,14 @@ public class SchemaUtilTest {
   }
 
   @Test
+  public void shouldGetCorrectJavaClassForDecimal() {
+    final int SCALE = 2;
+    final Class decimalClazz = SchemaUtil.getJavaType(
+        Decimal.schema(SCALE));
+    assertThat(decimalClazz, equalTo(BigDecimal.class));
+  }
+
+  @Test
   public void shouldGetCorrectSqlTypeNameForBoolean() {
     assertThat(SchemaUtil.getSqlTypeName(Schema.OPTIONAL_BOOLEAN_SCHEMA), equalTo("BOOLEAN"));
   }
@@ -159,6 +170,14 @@ public class SchemaUtilTest {
     assertThat(SchemaUtil.getSqlTypeName(structSchema),
         equalTo(
             "STRUCT<COL1 VARCHAR, COL2 INT, COL3 DOUBLE, COL4 ARRAY<DOUBLE>, COL5 MAP<VARCHAR,DOUBLE>>"));
+  }
+
+  @Test
+  public void shouldGetCorrectSqlTypeNameForDecimal() {
+    assertThat(SchemaUtil.getSqlTypeName(
+        DecimalUtil.schema(6,2)),
+        equalTo("DECIMAL(6,2)")
+    );
   }
 
 
@@ -400,6 +419,107 @@ public class SchemaUtilTest {
 
     final Optional<Field> field1 = SchemaUtil.getFieldByName(schema, "orderid");
     Assert.assertFalse(field1.isPresent());
+  }
+
+  @Test
+  public void shouldGetTheCorrectSchemaForBoolean() {
+    final Schema schema = SchemaUtil.getTypeSchema("BOOLEAN");
+    assertThat(schema, sameInstance(Schema.OPTIONAL_BOOLEAN_SCHEMA));
+  }
+
+  @Test
+  public void shouldGetTheCorrectSchemaForInt() {
+    final Schema schema = SchemaUtil.getTypeSchema("INT");
+    assertThat(schema, sameInstance(Schema.OPTIONAL_INT32_SCHEMA));
+  }
+
+  @Test
+  public void shouldGetTheCorrectSchemaForLong() {
+    final Schema schema = SchemaUtil.getTypeSchema("BIGINT");
+    assertThat(schema, sameInstance(Schema.OPTIONAL_INT64_SCHEMA));
+  }
+
+  @Test
+  public void shouldGetTheCorrectSchemaForDouble() {
+    final Schema schema = SchemaUtil.getTypeSchema("DOUBLE");
+    assertThat(schema, sameInstance(Schema.OPTIONAL_FLOAT64_SCHEMA));
+  }
+
+  @Test
+  public void shouldGetTheCorrectSchemaForString() {
+    final Schema schema = SchemaUtil.getTypeSchema("VARCHAR");
+    assertThat(schema, sameInstance(Schema.OPTIONAL_STRING_SCHEMA));
+  }
+
+  @Test
+  public void shouldGetTheCorrectSchemaForDecimal() {
+    final Schema schema = SchemaUtil.getTypeSchema("DECIMAL(6,2)");
+
+    assertThat(schema.type(), sameInstance(Schema.Type.BYTES));
+    assertThat(schema.isOptional(), is(true));
+    assertThat(schema.parameters().get(DecimalUtil.PRECISION_FIELD), is("6"));
+    assertThat(schema.parameters().get(DecimalUtil.SCALE_FIELD), is("2"));
+  }
+
+  @Test
+  public void shouldGetTheCorrectSchemaForArray() {
+    final Schema schema = SchemaUtil.getTypeSchema("ARRAY<DOUBLE>");
+    assertThat(schema.type(), sameInstance(Schema.Type.ARRAY));
+  }
+
+  @Test
+  public void shouldGetTheCorrectSchemaForMap() {
+    final Schema schema = SchemaUtil.getTypeSchema("MAP<VARCHAR, DOUBLE>");
+    assertThat(schema.type(), sameInstance(Schema.Type.MAP));
+  }
+
+  @Test
+  public void shouldFailForIncorrectSchema() {
+
+    try {
+      SchemaUtil.getTypeSchema("BYTES");
+      Assert.fail();
+    } catch (final Exception e) {
+      assertThat(e.getMessage(), equalTo("Unsupported type: BYTES"));
+    }
+  }
+
+  @Test
+  public void shouldFailForInvalidDecimalParameters() {
+    try {
+      SchemaUtil.getTypeSchema("DECIMAL(a, 2)");
+      Assert.fail();
+    } catch (final Exception e) {
+      assertThat(e.getMessage(), equalTo("DECIMAL is not defined correctly: DECIMAL(a, 2)"));
+    }
+
+    try {
+      SchemaUtil.getTypeSchema("DECIMAL(1, a)");
+      Assert.fail();
+    } catch (final Exception e) {
+      assertThat(e.getMessage(), equalTo("DECIMAL is not defined correctly: DECIMAL(1, a)"));
+    }
+
+    try {
+      SchemaUtil.getTypeSchema("DECIMAL(a)");
+      Assert.fail();
+    } catch (final Exception e) {
+      assertThat(e.getMessage(), equalTo("DECIMAL is not defined correctly: DECIMAL(a)"));
+    }
+
+    try {
+      SchemaUtil.getTypeSchema("DECIMAL()");
+      Assert.fail();
+    } catch (final Exception e) {
+      assertThat(e.getMessage(), equalTo("DECIMAL is not defined correctly: DECIMAL()"));
+    }
+
+    try {
+      SchemaUtil.getTypeSchema("DECIMAL");
+      Assert.fail();
+    } catch (final Exception e) {
+      assertThat(e.getMessage(), equalTo("DECIMAL is not defined correctly: DECIMAL"));
+    }
   }
 
   @Test

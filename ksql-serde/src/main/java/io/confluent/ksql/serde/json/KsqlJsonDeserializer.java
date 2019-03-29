@@ -20,6 +20,7 @@ import io.confluent.ksql.GenericRow;
 import io.confluent.ksql.logging.processing.ProcessingLogger;
 import io.confluent.ksql.serde.util.SerdeProcessingLogMessageFactory;
 import io.confluent.ksql.serde.util.SerdeUtils;
+import io.confluent.ksql.util.DecimalUtil;
 import io.confluent.ksql.util.KsqlException;
 import io.confluent.ksql.util.SchemaUtil;
 import java.util.ArrayList;
@@ -108,8 +109,10 @@ public class KsqlJsonDeserializer implements Deserializer<GenericRow> {
 
   // This is a temporary requirement until we can ensure that the types that Connect JSON
   // convertor creates are supported in KSQL.
+  // CHECKSTYLE_RULES.OFF: CyclomaticComplexity
   @SuppressWarnings("unchecked")
   private Object enforceFieldType(final Schema fieldSchema, final Object columnVal) {
+    // CHECKSTYLE_RULES.ON: CyclomaticComplexity
     if (columnVal == null) {
       return null;
     }
@@ -124,6 +127,19 @@ public class KsqlJsonDeserializer implements Deserializer<GenericRow> {
         return SerdeUtils.toDouble(columnVal);
       case STRING:
         return processString(columnVal);
+      case BYTES:
+        // JSON format stores decimal values in a plain-text format (no bytes).
+        // However, KSQL uses the Schema Connect class to define a DECIMAL type, which
+        // is defined as a logical type using the BYTES type.
+        if (DecimalUtil.isDecimalSchema(fieldSchema)) {
+          return DecimalUtil.enforcePrecisionScale(
+              SerdeUtils.toDecimal(columnVal),
+              DecimalUtil.getPrecision(fieldSchema),
+              DecimalUtil.getScale(fieldSchema)
+          );
+        }
+
+        throw new KsqlException("Type is not supported: " + fieldSchema.type());
       case ARRAY:
         return enforceFieldTypeForArray(fieldSchema, (List<?>) columnVal);
       case MAP:

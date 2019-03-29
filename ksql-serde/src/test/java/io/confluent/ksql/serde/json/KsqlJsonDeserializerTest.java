@@ -28,12 +28,16 @@ import io.confluent.ksql.logging.processing.ProcessingLogConfig;
 import io.confluent.ksql.logging.processing.ProcessingLogger;
 import io.confluent.ksql.serde.SerdeTestUtils;
 import io.confluent.ksql.serde.util.SerdeProcessingLogMessageFactory;
+
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+
+import io.confluent.ksql.util.DecimalUtil;
 import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
@@ -60,6 +64,9 @@ public class KsqlJsonDeserializerTest {
 
   @Before
   public void before() {
+    final int precision = 6;
+    final int scale = 2;
+
     orderSchema = SchemaBuilder.struct()
         .field("ordertime".toUpperCase(), org.apache.kafka.connect.data.Schema.OPTIONAL_INT64_SCHEMA)
         .field("orderid".toUpperCase(), org.apache.kafka.connect.data.Schema.OPTIONAL_INT64_SCHEMA)
@@ -67,6 +74,7 @@ public class KsqlJsonDeserializerTest {
         .field("orderunits".toUpperCase(), org.apache.kafka.connect.data.Schema.OPTIONAL_FLOAT64_SCHEMA)
         .field("arraycol".toUpperCase(), SchemaBuilder.array(org.apache.kafka.connect.data.Schema.OPTIONAL_FLOAT64_SCHEMA).optional().build())
         .field("mapcol".toUpperCase(), SchemaBuilder.map(org.apache.kafka.connect.data.Schema.OPTIONAL_STRING_SCHEMA, org.apache.kafka.connect.data.Schema.OPTIONAL_FLOAT64_SCHEMA).optional().build())
+        .field("orderamount".toUpperCase(), DecimalUtil.schema(precision, scale))
         .build();
     ksqlJsonDeserializer = new KsqlJsonDeserializer(
         orderSchema,
@@ -84,15 +92,17 @@ public class KsqlJsonDeserializerTest {
     orderRow.put("orderunits", 10.0);
     orderRow.put("arraycol", new Double[]{10.0, 20.0});
     orderRow.put("mapcol", Collections.singletonMap("key1", 10.0));
+    orderRow.put("orderamount", new BigDecimal("17.28"));
 
     final byte[] jsonBytes = objectMapper.writeValueAsBytes(orderRow);
 
     final GenericRow genericRow = ksqlJsonDeserializer.deserialize("", jsonBytes);
-    assertThat(genericRow.getColumns().size(), equalTo(6));
+    assertThat(genericRow.getColumns().size(), equalTo(7));
     assertThat(genericRow.getColumns().get(0), equalTo(1511897796092L));
     assertThat(genericRow.getColumns().get(1), equalTo(1L));
     assertThat(genericRow.getColumns().get(2), equalTo("Item_1"));
     assertThat(genericRow.getColumns().get(3), equalTo(10.0));
+    assertThat(genericRow.getColumns().get(6), equalTo(new BigDecimal("17.28")));
   }
 
   @Test
@@ -138,7 +148,7 @@ public class KsqlJsonDeserializerTest {
     final byte[] jsonBytes = objectMapper.writeValueAsBytes(orderRow);
 
     final GenericRow genericRow = ksqlJsonDeserializer.deserialize("", jsonBytes);
-    assertThat(genericRow.getColumns().size(), equalTo(6));
+    assertThat(genericRow.getColumns().size(), equalTo(7));
     assertThat(genericRow.getColumns().get(0), equalTo(1511897796092L));
     assertThat(genericRow.getColumns().get(1), equalTo(1L));
     assertThat(genericRow.getColumns().get(2), equalTo("Item_1"));
@@ -156,8 +166,9 @@ public class KsqlJsonDeserializerTest {
     row.put("orderunits", null);
     row.put("arrayCol", new Double[]{0.0, null});
     row.put("mapCol", null);
+    row.put("decimal", null);
 
-    final GenericRow expected = new GenericRow(Arrays.asList(null, null, null, null, new Double[]{0.0, null}, null));
+    final GenericRow expected = new GenericRow(Arrays.asList(null, null, null, null, new Double[]{0.0, null}, null, null));
     final GenericRow genericRow = ksqlJsonDeserializer.deserialize(
         "", objectMapper.writeValueAsBytes(row));
     assertThat(genericRow, equalTo(expected));

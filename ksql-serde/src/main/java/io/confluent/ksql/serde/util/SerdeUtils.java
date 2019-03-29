@@ -16,6 +16,7 @@
 package io.confluent.ksql.serde.util;
 
 import io.confluent.ksql.util.KsqlException;
+import java.math.BigDecimal;
 import java.util.Objects;
 
 public final class SerdeUtils {
@@ -86,5 +87,33 @@ public final class SerdeUtils {
       }
     }
     throw new IllegalArgumentException("This Object doesn't represent a double");
+  }
+
+  public static BigDecimal toDecimal(final Object object) {
+    Objects.requireNonNull(object, "Object cannot be null");
+    if (object instanceof BigDecimal) {
+      return (BigDecimal) object;
+    }
+    if (object instanceof Boolean) {
+      return ((Boolean)object) ? BigDecimal.ONE : BigDecimal.ZERO;
+    }
+    if (object instanceof Integer) {
+      return BigDecimal.valueOf(((Integer) object).intValue());
+    }
+    if (object instanceof Long) {
+      return BigDecimal.valueOf(((Long) object).longValue());
+    }
+    if (object instanceof Double) {
+      return BigDecimal.valueOf(((Double) object).doubleValue());
+    }
+    if (object instanceof String) {
+      try {
+        // JSON decimals must be in plain-text format (no bytes in base64 encoding)
+        return new BigDecimal((String)object);
+      } catch (final NumberFormatException e) {
+        throw new KsqlException("Cannot convert " + object + " to DECIMAL.", e);
+      }
+    }
+    throw new IllegalArgumentException("This Object doesn't represent a decimal");
   }
 }

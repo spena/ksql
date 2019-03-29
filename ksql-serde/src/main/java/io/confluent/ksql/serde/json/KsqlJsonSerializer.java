@@ -16,11 +16,15 @@
 package io.confluent.ksql.serde.json;
 
 import io.confluent.ksql.GenericRow;
+import io.confluent.ksql.util.DecimalUtil;
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.Map;
 import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.common.serialization.Serializer;
+import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
+import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
 import org.apache.kafka.connect.json.JsonConverter;
 import org.slf4j.Logger;
@@ -57,14 +61,84 @@ public class KsqlJsonSerializer implements Serializer<GenericRow> {
       return null;
     }
     try {
-      final Struct struct = new Struct(schema);
+      final Struct struct = new Struct(removeUnsupportedTypes(schema));
       for (int i = 0; i < data.getColumns().size(); i++) {
-        struct.put(schema.fields().get(i), data.getColumns().get(i));
+        Object o = data.getColumns().get(i);
+        if (o instanceof BigDecimal) {
+          o = ((BigDecimal)o).toPlainString();
+        }
+
+        Field field = struct.schema().fields().get(i);
+        if (DecimalUtil.isDecimalSchema(field.schema())) {
+          field = new Field(field.name(), field.index(), Schema.OPTIONAL_STRING_SCHEMA);
+        }
+
+        struct.put(field, o);
       }
 
-      return jsonConverter.fromConnectData(topic, schema, struct);
+      return jsonConverter.fromConnectData(topic, struct.schema(), struct);
     } catch (final Exception e) {
       throw new SerializationException("Error serializing JSON message", e);
+    }
+  }
+
+  private Schema removeUnsupportedTypes(final Schema schema) {
+    SchemaBuilder builder = new SchemaBuilder(Schema.Type.STRUCT);
+
+    for (Field f : schema.fields()) {
+      builder = builder.field(f.name(), removeUnsupportedType(f.schema()));
+    }
+
+    return builder.build();
+  }
+
+  private Schema removeUnsupportedType(final Schema schema) {
+    switch (schema.type()) {
+      case BYTES:
+        if (DecimalUtil.isDecimalSchema(schema)) {
+          return Schema.OPTIONAL_STRING_SCHEMA;
+        }
+
+        return schema;
+      case ARRAY:
+        SchemaBuilder array =
+            SchemaBuilder.array(
+                removeUnsupportedType(schema.valueSchema())
+            ).name(schema.name());
+
+        if (schema.isOptional()) {
+          array = array.optional();
+        }
+
+        return array.build();
+      case MAP:
+        SchemaBuilder map =
+            SchemaBuilder.map(
+                removeUnsupportedType(schema.keySchema()),
+                removeUnsupportedType(schema.valueSchema())
+            ).name(schema.name());
+
+        if (schema.isOptional()) {
+          map = map.optional();
+        }
+
+        return map.build();
+      case STRUCT:
+        SchemaBuilder struct =
+            SchemaBuilder.struct()
+            .name(schema.name());
+
+        for (Field f : schema.fields()) {
+          struct.field(f.name(), removeUnsupportedType(f.schema()));
+        }
+
+        if (schema.isOptional()) {
+          struct = struct.optional();
+        }
+
+        return struct;
+      default:
+        return schema;
     }
   }
 

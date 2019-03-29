@@ -18,26 +18,55 @@ package io.confluent.ksql.parser.tree;
 import com.google.common.collect.ImmutableMap;
 import com.google.errorprone.annotations.Immutable;
 import io.confluent.ksql.util.KsqlException;
+
+import java.util.Collections;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Function;
 
 @Immutable
 public final class PrimitiveType extends Type {
 
-  private static final ImmutableMap<SqlType, PrimitiveType> TYPES = ImmutableMap.of(
-      SqlType.BOOLEAN, new PrimitiveType(SqlType.BOOLEAN),
-      SqlType.INTEGER, new PrimitiveType(SqlType.INTEGER),
-      SqlType.BIGINT, new PrimitiveType(SqlType.BIGINT),
-      SqlType.DOUBLE, new PrimitiveType(SqlType.DOUBLE),
-      SqlType.STRING, new PrimitiveType(SqlType.STRING)
-  );
+  private static final ImmutableMap<SqlType, Function<Optional<List<Integer>>, PrimitiveType>>
+      TYPES = ImmutableMap.<SqlType, Function<Optional<List<Integer>>, PrimitiveType>>builder()
+      .put(SqlType.BOOLEAN, p -> new PrimitiveType(SqlType.BOOLEAN))
+      .put(SqlType.INTEGER, p -> new PrimitiveType(SqlType.INTEGER))
+      .put(SqlType.BIGINT,  p -> new PrimitiveType(SqlType.BIGINT))
+      .put(SqlType.DOUBLE,  p -> new PrimitiveType(SqlType.DOUBLE))
+      .put(SqlType.STRING,  p -> new PrimitiveType(SqlType.STRING))
+      .put(SqlType.DECIMAL, p -> {
+        final int paramLen = p.orElse(Collections.emptyList()).size();
+        if (paramLen != 2) {
+          throw new KsqlException("Invalid number of DECIMAL type parameters: " + paramLen);
+        }
 
-  public static PrimitiveType of(final String typeName) {
-    switch (typeName.toUpperCase()) {
+        return new PrimitiveType(SqlType.DECIMAL, p);
+      })
+      .build();
+
+  /* Types may have parameters, such as DECIMAL(p, s) and VARCHAR(n) */
+  final Optional<List<Integer>> typeParameters;
+
+  public static PrimitiveType of(
+      final String typeName,
+      final Optional<List<Integer>> typeParameters
+  ) {
+    switch (typeName) {
+      case "BOOLEAN":
+        return PrimitiveType.of(SqlType.BOOLEAN);
       case "INT":
         return PrimitiveType.of(SqlType.INTEGER);
       case "VARCHAR":
+      case "STRING":
         return PrimitiveType.of(SqlType.STRING);
+      case "DECIMAL":
+        final int paramSize = typeParameters.orElse(Collections.emptyList()).size();
+        if (paramSize != 2) {
+          throw new KsqlException("Invalid decimal type parameters length: " + paramSize);
+        }
+
+        return new PrimitiveType(Type.SqlType.DECIMAL, typeParameters);
       default:
         try {
           final SqlType sqlType = SqlType.valueOf(typeName.toUpperCase());
@@ -49,15 +78,41 @@ public final class PrimitiveType extends Type {
   }
 
   public static PrimitiveType of(final SqlType sqlType) {
-    final PrimitiveType primitive = TYPES.get(Objects.requireNonNull(sqlType, "sqlType"));
+    final Function<Optional<List<Integer>>, PrimitiveType> primitive =
+        TYPES.get(Objects.requireNonNull(sqlType, "sqlType"));
     if (primitive == null) {
       throw new KsqlException("Invalid primitive type: " + sqlType);
     }
-    return primitive;
+    return primitive.apply(Optional.empty());
+  }
+
+  public static PrimitiveType of(final SqlType sqlType, final List<Integer> sqlTypeParameters) {
+    final Function<Optional<List<Integer>>, PrimitiveType> primitive =
+        TYPES.get(Objects.requireNonNull(sqlType, "sqlType"));
+    if (primitive == null) {
+      throw new KsqlException("Invalid primitive type: " + sqlType);
+    }
+    return primitive.apply(Optional.ofNullable(sqlTypeParameters));
   }
 
   private PrimitiveType(final SqlType sqlType) {
-    super(Optional.empty(), sqlType);
+    this(sqlType, Optional.empty());
+  }
+
+  private PrimitiveType(
+      final SqlType ksqlType,
+      final Optional<List<Integer>> typeParameters
+  ) {
+    super(Optional.empty(), ksqlType);
+    this.typeParameters = typeParameters;
+  }
+
+  public List<Integer> getParameters() {
+    if (typeParameters.isPresent()) {
+      return typeParameters.get();
+    }
+
+    return Collections.emptyList();
   }
 
   @Override
@@ -67,19 +122,42 @@ public final class PrimitiveType extends Type {
 
   @Override
   public boolean equals(final Object o) {
-    if (this == o) {
-      return true;
+    if (o == null) {
+      return false;
     }
     if (!(o instanceof PrimitiveType)) {
       return false;
     }
 
     final PrimitiveType that = (PrimitiveType) o;
-    return Objects.equals(this.getSqlType(), that.getSqlType());
+    if (!Objects.equals(this.getSqlType(), that.getSqlType())) {
+      return false;
+    }
+
+    if (that.typeParameters.isPresent() != typeParameters.isPresent()) {
+      return false;
+    }
+
+    if (that.typeParameters.isPresent()) {
+      final List<Integer> typeParameters1 = that.typeParameters.get();
+      final List<Integer> typeParameters2 = typeParameters.get();
+
+      if (typeParameters1.size() != typeParameters2.size()) {
+        return false;
+      }
+
+      for (int i = 0; i < typeParameters1.size(); i++) {
+        if (!typeParameters1.get(i).equals(typeParameters2.get(i))) {
+          return false;
+        }
+      }
+    }
+
+    return true;
   }
 
   @Override
   public int hashCode() {
-    return Objects.hash(getSqlType());
+    return Objects.hash(getSqlType(), typeParameters.orElse(Collections.emptyList()));
   }
 }

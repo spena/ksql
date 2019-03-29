@@ -18,6 +18,8 @@ package io.confluent.ksql.serde.delimited;
 import io.confluent.ksql.GenericRow;
 import io.confluent.ksql.logging.processing.ProcessingLogger;
 import io.confluent.ksql.serde.util.SerdeProcessingLogMessageFactory;
+import io.confluent.ksql.serde.util.SerdeUtils;
+import io.confluent.ksql.util.DecimalUtil;
 import io.confluent.ksql.util.KsqlException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -25,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
@@ -98,7 +101,9 @@ public class KsqlDelimitedDeserializer implements Deserializer<GenericRow> {
     }
   }
 
+  // CHECKSTYLE_RULES.OFF: CyclomaticComplexity
   private Object enforceFieldType(final Schema fieldSchema, final String delimitedField) {
+    // CHECKSTYLE_RULES.ON: CyclomaticComplexity
 
     if (delimitedField.isEmpty()) {
       return null;
@@ -114,6 +119,19 @@ public class KsqlDelimitedDeserializer implements Deserializer<GenericRow> {
         return Double.parseDouble(delimitedField);
       case STRING:
         return delimitedField;
+      case BYTES:
+        if (DecimalUtil.isDecimalSchema(fieldSchema)) {
+          // DELIMITED format stores decimal values in a plain-text format (no bytes).
+          // However, KSQL uses the Schema Connect class to define a DECIMAL type, which
+          // is defined as a logical type using the BYTES type.
+          return DecimalUtil.enforcePrecisionScale(
+              SerdeUtils.toDecimal(delimitedField),
+              DecimalUtil.getPrecision(fieldSchema),
+              DecimalUtil.getScale(fieldSchema)
+          );
+        }
+
+        throw new KsqlException("Type is not supported: " + fieldSchema.type());
       case ARRAY:
       case MAP:
       default:

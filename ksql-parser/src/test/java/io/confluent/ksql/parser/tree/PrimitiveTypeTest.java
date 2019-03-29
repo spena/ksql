@@ -49,16 +49,6 @@ public class PrimitiveTypeTest {
   }
 
   @Test
-  public void shouldThrowOnUnknownTypeString() {
-    // Then:
-    expectedException.expect(KsqlException.class);
-    expectedException.expectMessage("Unknown primitive type: WHAT_IS_THIS?");
-
-    // When:
-    PrimitiveType.of("WHAT_IS_THIS?");
-  }
-
-  @Test
   public void shouldThrowOnArrayType() {
     // Then:
     expectedException.expect(KsqlException.class);
@@ -91,31 +81,17 @@ public class PrimitiveTypeTest {
   @Test
   public void shouldSupportPrimitiveTypes() {
     // Given:
-    final java.util.Map<String, SqlType> primitives = ImmutableMap.of(
-        "BooleaN", SqlType.BOOLEAN,
-        "IntegeR", SqlType.INTEGER,
-        "BigInT", SqlType.BIGINT,
-        "DoublE", SqlType.DOUBLE,
-        "StrinG", SqlType.STRING
+    final java.util.Map<SqlType, PrimitiveType> primitives = ImmutableMap.of(
+        SqlType.BOOLEAN, PrimitiveType.of(SqlType.BOOLEAN),
+        SqlType.INTEGER, PrimitiveType.of(SqlType.INTEGER),
+        SqlType.BIGINT, PrimitiveType.of(SqlType.BIGINT),
+        SqlType.DOUBLE, PrimitiveType.of(SqlType.DOUBLE),
+        SqlType.STRING, PrimitiveType.of(SqlType.STRING)
     );
 
-    primitives.forEach((string, expected) ->
+    primitives.forEach((type, expected) ->
         // Then:
-        assertThat(PrimitiveType.of(string).getSqlType(), is(expected))
-    );
-  }
-
-  @Test
-  public void shouldSupportAlternativePrimitiveTypeNames() {
-    // Given:
-    final java.util.Map<String, SqlType> primitives = ImmutableMap.of(
-        "InT", SqlType.INTEGER,
-        "VarchaR", SqlType.STRING
-    );
-
-    primitives.forEach((string, expected) ->
-        // Then:
-        assertThat(PrimitiveType.of(string).getSqlType(), is(expected))
+        assertThat(PrimitiveType.of(type), is(expected))
     );
   }
 }

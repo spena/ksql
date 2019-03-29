@@ -16,9 +16,12 @@
 package io.confluent.ksql.serde.connect;
 
 import com.google.common.collect.ImmutableMap;
+import io.confluent.ksql.util.DecimalUtil;
 import io.confluent.ksql.util.KsqlException;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
+import org.apache.kafka.connect.data.Decimal;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Schema.Type;
@@ -39,10 +42,17 @@ public class ConnectSchemaTranslator {
       .put(Type.FLOAT64, s -> Schema.OPTIONAL_FLOAT64_SCHEMA)
       .put(Type.STRING, s -> Schema.OPTIONAL_STRING_SCHEMA)
       .put(Type.BOOLEAN, s -> Schema.OPTIONAL_BOOLEAN_SCHEMA)
+      .put(Type.BYTES, ConnectSchemaTranslator::toLogicalSchema)
       .put(Type.ARRAY, ConnectSchemaTranslator::toKsqlArraySchema)
       .put(Type.MAP, ConnectSchemaTranslator::toKsqlMapSchema)
       .put(Type.STRUCT, ConnectSchemaTranslator::toKsqlStructSchema)
       .build();
+
+  // Schema Registry does not set the precision parameter if the value on the AVRO schema
+  // matches the default precision value that SR uses.
+  // SR sets the default to 64 (see Connect AvroData.java for more info).
+  private static final String CONNECT_DECIMAL_PRECISION_FIELD = "connect.decimal.precision";
+  private static final String CONNECT_DECIMAL_PRECISION_DEFAULT = "64";
 
   protected static class UnsupportedTypeException extends RuntimeException {
     UnsupportedTypeException(final String error) {
@@ -113,5 +123,62 @@ public class ConnectSchemaTranslator {
       }
     }
     return schemaBuilder.optional().build();
+  }
+
+  private static Schema toLogicalSchema(final Schema schema) {
+    // Converts to optional DECIMAL schema
+    if (DecimalUtil.isDecimalSchema(schema)) {
+      return toKsqlDecimalSchema(schema);
+    }
+
+    throw new UnsupportedTypeException(
+        String.format("Unsupported type: %s", schema.type().getName()));
+  }
+
+  private static Schema toKsqlDecimalSchema(final Schema schema) {
+    /*
+     * A Decimal Schema must have 2 parameters, precision and scale.
+     *
+     * Scale is always set by Schema Registry as a parameter named 'scale'.
+     *
+     * Precision is optional for Schema Registry, and it is set only
+     * if the precision value read from AVRO does not match the default SR precision
+     * which is 64. The parameter is named 'connect.decimal.precision'
+     *
+     */
+
+    if (schema.parameters() == null) {
+      throw new UnsupportedTypeException(
+          String.format("Unknown decimal parameters: %s", schema.name()));
+    }
+
+    final Map<String, String> parameters = schema.parameters();
+
+    try {
+      // Throw an exception if scale is not set instead of setting a default value.
+      // SR/Connect API has changed the precision parameter name twice in the past,
+      // and if it changes the scale name as well then we won't find a bug if
+      // a default value is used.
+      // Note: It would be good for SR/Connect API to expose the precision and scale
+      // parameter names as well as default values.
+      final int scale =
+          Integer.parseInt(
+              Optional.ofNullable(parameters.get(Decimal.SCALE_FIELD))
+                  .orElseThrow(() -> new UnsupportedTypeException(
+                      String.format("Unknown decimal scale: %s", schema.name())))
+          );
+
+      final int precision =
+          Integer.parseInt(
+              Optional.ofNullable(parameters.get(CONNECT_DECIMAL_PRECISION_FIELD))
+                  .orElse(CONNECT_DECIMAL_PRECISION_DEFAULT)
+          );
+
+      // Set precision as a new name 'precision' parameter to match AVRO parameters
+      return DecimalUtil.schema(precision, scale);
+    } catch (NumberFormatException e) {
+      throw new UnsupportedTypeException(
+          String.format("Invalid decimal parameters: %s", e.getMessage()));
+    }
   }
 }

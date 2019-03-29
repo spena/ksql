@@ -120,6 +120,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.RuleContext;
 import org.antlr.v4.runtime.Token;
@@ -1276,7 +1278,10 @@ public class AstBuilder extends SqlBaseBaseVisitor<Node> {
 
   private static Type getType(final SqlBaseParser.TypeContext type) {
     if (type.baseType() != null) {
-      return PrimitiveType.of(baseTypeToString(type.baseType()));
+      final String baseType = baseTypeToString(type.baseType());
+      final List<Integer> typeParameters = typeParametersToIntegerList(type.typeParameter());
+
+      return PrimitiveType.of(baseType, Optional.of(typeParameters));
     }
 
     if (type.ARRAY() != null) {
@@ -1301,6 +1306,12 @@ public class AstBuilder extends SqlBaseBaseVisitor<Node> {
     throw new IllegalArgumentException("Unsupported type specification: " + type.getText());
   }
 
+  private static List<Integer> typeParametersToIntegerList(
+      final List<SqlBaseParser.TypeParameterContext> typeParameters
+  ) {
+    return typeParameters.stream().map(e -> typeParameterToInteger(e)).collect(Collectors.toList());
+  }
+
   private static String baseTypeToString(final SqlBaseParser.BaseTypeContext baseType) {
     if (baseType.identifier() != null) {
       return getIdentifierText(baseType.identifier());
@@ -1308,6 +1319,17 @@ public class AstBuilder extends SqlBaseBaseVisitor<Node> {
       throw new KsqlException(
           "Base type must contain either identifier, "
           + "time with time zone, or timestamp with time zone"
+      );
+    }
+  }
+
+  private static Integer typeParameterToInteger(
+      final SqlBaseParser.TypeParameterContext typeParameter) {
+    try {
+      return Integer.parseInt(typeParameter.INTEGER_VALUE().getSymbol().getText());
+    } catch (NumberFormatException e) {
+      throw new KsqlException(
+          "Parameter type must be numeric only", e
       );
     }
   }

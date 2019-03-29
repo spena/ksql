@@ -16,6 +16,7 @@
 package io.confluent.ksql.util;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import java.math.BigDecimal;
 import java.util.List;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
@@ -33,8 +34,9 @@ public class GenericRowValueTypeEnforcer {
     return enforceFieldType(field.schema(), value);
   }
 
+  // CHECKSTYLE_RULES.OFF: CyclomaticComplexity
   private Object enforceFieldType(final Schema schema, final Object value) {
-
+    // CHECKSTYLE_RULES.ON: CyclomaticComplexity
     switch (schema.type()) {
       case INT32:
         return enforceInteger(value);
@@ -46,6 +48,12 @@ public class GenericRowValueTypeEnforcer {
         return enforceString(value);
       case BOOLEAN:
         return enforceBoolean(value);
+      case BYTES:
+        if (DecimalUtil.isDecimalSchema(schema)) {
+          return enforceDecimal(value);
+        }
+
+        throw new KsqlException("Type is not supported: " + schema);
       case ARRAY:
       case MAP:
       case STRUCT:
@@ -55,7 +63,7 @@ public class GenericRowValueTypeEnforcer {
     }
   }
 
-  private Double enforceDouble(final Object value) {
+  private static Double enforceDouble(final Object value) {
     if (value instanceof Double) {
       return (Double) value;
     } else if (value instanceof Integer) {
@@ -77,7 +85,7 @@ public class GenericRowValueTypeEnforcer {
     }
   }
 
-  private Long enforceLong(final Object value) {
+  private static Long enforceLong(final Object value) {
     if (value instanceof Long) {
       return (Long) value;
     } else if (value instanceof Integer) {
@@ -97,7 +105,7 @@ public class GenericRowValueTypeEnforcer {
     }
   }
 
-  private Integer enforceInteger(final Object value) {
+  private static Integer enforceInteger(final Object value) {
 
     if (value instanceof Integer) {
       return (Integer) value;
@@ -118,7 +126,7 @@ public class GenericRowValueTypeEnforcer {
     }
   }
 
-  private String enforceString(final Object value) {
+  private static String enforceString(final Object value) {
     if (value instanceof String || value instanceof CharSequence) {
       return value.toString();
     } else if (value == null) {
@@ -129,7 +137,7 @@ public class GenericRowValueTypeEnforcer {
   }
 
   @SuppressFBWarnings("NP_BOOLEAN_RETURN_NULL")
-  private Boolean enforceBoolean(final Object value) {
+  private static Boolean enforceBoolean(final Object value) {
     if (value instanceof Boolean) {
       return (Boolean) value;
     } else if (value instanceof String) {
@@ -138,6 +146,16 @@ public class GenericRowValueTypeEnforcer {
       return null;
     } else {
       throw new KsqlException("Invalid field type. Value must be Boolean.");
+    }
+  }
+
+  private static BigDecimal enforceDecimal(final Object value) {
+    if (value instanceof BigDecimal) {
+      return (BigDecimal) value;
+    } else if (value instanceof String) {
+      return new BigDecimal((String) value);
+    } else {
+      throw new KsqlException("Invalid field type: " + value);
     }
   }
 }

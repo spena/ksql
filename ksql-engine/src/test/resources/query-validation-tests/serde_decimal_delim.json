@@ -1,0 +1,117 @@
+{
+  "comments": [
+    "Test cases for DECIMAL types in DELIMITED format"
+  ],
+  "tests": [
+    {
+      "name": "Deserialize DECIMAL values that fit into decimal precision and scale",
+      "statements": [
+        "CREATE STREAM T1 (C1 decimal(6,2)) WITH (kafka_topic='T1', value_format='DELIMITED');",
+        "CREATE STREAM S1 AS SELECT * FROM T1;"
+      ],
+      "inputs": [
+        {"topic": "T1", "value": "1000.01"},
+        {"topic": "T1", "value":   "10.01"},
+        {"topic": "T1", "value":    "1.01"},
+        {"topic": "T1", "value":     ".01"},
+        {"topic": "T1", "value": "1000"},
+        {"topic": "T1", "value":   "10"},
+        {"topic": "T1", "value":    "1"},
+        {"topic": "T1", "value":    "0"},
+        {"topic": "T1", "value":    "1.1"},
+        {"topic": "T1", "value":    "1.10"}
+
+      ],
+      "outputs": [
+        {"topic": "S1", "value": "1000.01"},
+        {"topic": "S1", "value":   "10.01"},
+        {"topic": "S1", "value":    "1.01"},
+        {"topic": "S1", "value":    "0.01"},
+        {"topic": "S1", "value": "1000"},
+        {"topic": "S1", "value":   "10"},
+        {"topic": "S1", "value":    "1"},
+        {"topic": "S1", "value":    "0"},
+        {"topic": "S1", "value":    "1.1"},
+        {"topic": "S1", "value":    "1.10"}
+      ]
+    },
+    {
+      "name": "Deserialize DECIMAL values that DO NOT fit into decimal precision and scale",
+      "statements": [
+        "CREATE STREAM T1 (C1 decimal(6,2)) WITH (kafka_topic='T1', value_format='DELIMITED');",
+        "CREATE STREAM S1 AS SELECT * FROM T1;"
+      ],
+      "inputs": [
+        {"topic": "T1", "value": "10.019"},
+        {"topic": "T1", "value": "10.015"},
+        {"topic": "T1", "value": "10.013"},
+        {"topic": "T1", "value": "10.01298765"},
+        {"topic": "T1", "value": "123456.12"},
+        {"topic": "T1", "value": "123456"}
+
+      ],
+      "outputs": [
+        {"topic": "S1", "value": "10.02"},
+        {"topic": "S1", "value": "10.02"},
+        {"topic": "S1", "value": "10.01"},
+        {"topic": "S1", "value": "10.01"}
+      ]
+    },
+    {
+      "name": "Insert DECIMAL values into a stream",
+      "statements": [
+        "CREATE STREAM T1 (C1 decimal(6,2)) WITH (kafka_topic='T1', value_format='DELIMITED');",
+        "CREATE STREAM T2 (C1 decimal(6,2)) WITH (kafka_topic='T2', value_format='DELIMITED');",
+        "INSERT INTO T2 SELECT * FROM T1;"
+      ],
+      "inputs": [
+        {"topic": "T1", "value": "10.019"},
+        {"topic": "T1", "value": "10.015"},
+        {"topic": "T1", "value": "10.013"},
+        {"topic": "T1", "value": "10.01298765"},
+        {"topic": "T1", "value": "123456.12"},
+        {"topic": "T1", "value": "123456"}
+
+      ],
+      "outputs": [
+        {"topic": "T2", "value": "10.02"},
+        {"topic": "T2", "value": "10.02"},
+        {"topic": "T2", "value": "10.01"},
+        {"topic": "T2", "value": "10.01"}
+      ]
+    },
+    {
+      "name": "DECIMAL vs DOUBLE values",
+      "statements": [
+        "CREATE STREAM T1 (C1 decimal(6,2), C2 double) WITH (kafka_topic='T1', value_format='DELIMITED');",
+        "CREATE STREAM T2 AS SELECT * FROM T1;"
+      ],
+      "inputs": [
+        {"topic": "T1", "value": "1.10,1.10"}
+
+      ],
+      "outputs": [
+        {"topic": "T2", "value": "1.10,1.1"}
+      ]
+    },
+    {
+      "name": "Ignore values that contain invalid decimal values",
+      "statements": [
+        "CREATE STREAM T1 (C1 decimal(6,2)) WITH (kafka_topic='T1', value_format='DELIMITED');",
+        "CREATE STREAM S1 AS SELECT * FROM T1;"
+      ],
+      "inputs": [
+        {"topic": "T1", "value": "17.18"},
+        {"topic": "T1", "value": "10..2"},
+        {"topic": "T1", "value": "a15"},
+        {"topic": "T1", "value": "10.3a"},
+        {"topic": "T1", "value": "17.19"}
+
+      ],
+      "outputs": [
+        {"topic": "S1", "value": "17.18"},
+        {"topic": "S1", "value": "17.19"}
+      ]
+    }
+  ]
+}

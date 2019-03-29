@@ -16,12 +16,16 @@
 package io.confluent.ksql.serde.connect;
 
 import io.confluent.ksql.GenericRow;
+import io.confluent.ksql.util.DecimalUtil;
 import io.confluent.ksql.util.KsqlException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
 import org.apache.kafka.connect.data.Date;
+import org.apache.kafka.connect.data.Decimal;
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.Struct;
@@ -117,9 +121,11 @@ public class ConnectDataTranslator implements DataTranslator {
       Schema.Type.STRING
   };
 
+  // CHECKSTYLE_RULES.OFF: CyclomaticComplexity
   private void validateSchema(final String pathStr,
                               final Schema schema,
                               final Schema connectSchema) {
+    // CHECKSTYLE_RULES.ON: CyclomaticComplexity
     switch (schema.type()) {
       case BOOLEAN:
       case ARRAY:
@@ -139,6 +145,14 @@ public class ConnectDataTranslator implements DataTranslator {
       case FLOAT64:
         validateType(pathStr, schema, connectSchema, FLOAT64_ACCEPTABLE_TYPES);
         break;
+      case BYTES:
+        if (!DecimalUtil.isDecimalSchema(schema)) {
+          throw new RuntimeException(
+              "Unexpected data type seen in schema: " + schema.type().getName());
+        }
+
+        validateType(pathStr, schema, connectSchema);
+        break;
       default:
         throw new RuntimeException(
             "Unexpected data type seen in schema: " + schema.type().getName());
@@ -156,16 +170,20 @@ public class ConnectDataTranslator implements DataTranslator {
         return Time.fromLogical(connectSchema, (java.util.Date) connectValue);
       case Timestamp.LOGICAL_NAME:
         return Timestamp.fromLogical(connectSchema, (java.util.Date) connectValue);
+      case Decimal.LOGICAL_NAME:
+        return Decimal.fromLogical(connectSchema, (BigDecimal) connectValue);
       default:
         return connectValue;
     }
   }
 
+  // CHECKSTYLE_RULES.OFF: CyclomaticComplexity
   @SuppressWarnings("unchecked")
   private Object toKsqlValue(final Schema schema,
                              final Schema connectSchema,
                              final Object connectValue,
                              final String pathStr) {
+    // CHECKSTYLE_RULES.ON: CyclomaticComplexity
     // Map a connect value+schema onto the schema expected by KSQL. For now this involves:
     // - handling case insensitivity for struct field names
     // - setting missing values to null
@@ -184,6 +202,15 @@ public class ConnectDataTranslator implements DataTranslator {
         return ((Number) convertedValue).intValue();
       case FLOAT64:
         return ((Number) convertedValue).doubleValue();
+      case BYTES:
+        if (!DecimalUtil.isDecimalSchema(schema)) {
+          return convertedValue;
+        }
+
+        return DecimalUtil.enforcePrecisionScale(
+            (BigDecimal) connectValue,
+            DecimalUtil.getPrecision(schema),
+            DecimalUtil.getScale(schema));
       case ARRAY:
         return toKsqlArray(
             schema.valueSchema(), connectSchema.valueSchema(), (List) convertedValue, pathStr);

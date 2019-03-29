@@ -26,12 +26,14 @@ import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.Ordering;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import org.apache.avro.SchemaBuilder.FieldAssembler;
@@ -39,11 +41,13 @@ import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
+import org.codehaus.jackson.node.IntNode;
 
 public final class SchemaUtil {
 
   private static final String DEFAULT_NAMESPACE = "ksql";
 
+  public static final String DECIMAL = "DECIMAL";
   public static final String ARRAY = "ARRAY";
   public static final String MAP = "MAP";
   public static final String STRUCT = "STRUCT";
@@ -51,6 +55,10 @@ public final class SchemaUtil {
   public static final String ROWKEY_NAME = "ROWKEY";
   public static final String ROWTIME_NAME = "ROWTIME";
   public static final int ROWKEY_NAME_INDEX = 1;
+
+  private static final String AVRO_LOGICAL_TYPE_PARAM = "logicalType";
+  private static final String AVRO_LOGICAL_DECIMAL_TYPE = "decimal";
+
   private static final Map<Type, Supplier<SchemaBuilder>> typeToSchema
       = ImmutableMap.<Type, Supplier<SchemaBuilder>>builder()
       .put(String.class, () -> SchemaBuilder.string().optional())
@@ -83,30 +91,68 @@ public final class SchemaUtil {
           .put(Schema.Type.FLOAT64, Schema.OPTIONAL_FLOAT64_SCHEMA)
           .build();
 
+  private static final Map<Schema.Type, Function<Schema, Type>> TYPE_TO_JAVA_TYPE =
+      ImmutableMap.<Schema.Type, Function<Schema, Type>>builder()
+          .put(Schema.Type.STRING, s -> String.class)
+          .put(Schema.Type.BOOLEAN, s -> Boolean.class)
+          .put(Schema.Type.INT32, s -> Integer.class)
+          .put(Schema.Type.INT64, s -> Long.class)
+          .put(Schema.Type.FLOAT64, s -> Double.class)
+          .put(Schema.Type.BYTES, SchemaUtil::toLogicalJavaType)
+          .put(Schema.Type.ARRAY, s -> List.class)
+          .put(Schema.Type.MAP, s -> Map.class)
+          .put(Schema.Type.STRUCT, s -> Struct.class)
+          .build();
+
+  private static Map<Schema.Type, Function<Schema, String>> TYPE_TO_SQL_STRING =
+      ImmutableMap.<Schema.Type, Function<Schema, String>>builder()
+          .put(Schema.Type.INT32, s -> "INT")
+          .put(Schema.Type.INT64, s -> "BIGINT")
+          .put(Schema.Type.FLOAT32, s -> "DOUBLE")
+          .put(Schema.Type.FLOAT64, s -> "DOUBLE")
+          .put(Schema.Type.BOOLEAN, s -> "BOOLEAN")
+          .put(Schema.Type.STRING, s -> "VARCHAR")
+          .put(Schema.Type.BYTES, SchemaUtil::toLogicalTypeName)
+          .put(Schema.Type.ARRAY, SchemaUtil::toArrayTypeName)
+          .put(Schema.Type.MAP, SchemaUtil::toMapTypeName)
+          .put(Schema.Type.STRUCT, SchemaUtil::toStructTypeName)
+          .build();
+
+  private static Map<String, Function<String, Schema>> SQL_STRING_TO_SCHEMA =
+      ImmutableMap.<String, Function<String, Schema>>builder()
+          .put("VARCHAR", s -> Schema.OPTIONAL_STRING_SCHEMA)
+          .put("STRING", s -> Schema.OPTIONAL_STRING_SCHEMA)
+          .put("BOOLEAN", s -> Schema.OPTIONAL_BOOLEAN_SCHEMA)
+          .put("BOOL", s -> Schema.OPTIONAL_BOOLEAN_SCHEMA)
+          .put("INTEGER", s -> Schema.OPTIONAL_INT32_SCHEMA)
+          .put("INT", s -> Schema.OPTIONAL_INT32_SCHEMA)
+          .put("BIGINT", s -> Schema.OPTIONAL_INT64_SCHEMA)
+          .put("LONG", s -> Schema.OPTIONAL_INT64_SCHEMA)
+          .put("DOUBLE", s -> Schema.OPTIONAL_FLOAT64_SCHEMA)
+          .put("DECIMAL", SchemaUtil::getDecimalSchema)
+          .put("DEC", SchemaUtil::getDecimalSchema)
+          .put("ARRAY", SchemaUtil::getArraySchema)
+          .put("MAP", SchemaUtil::getMapSchema)
+          .build();
+
   private SchemaUtil() {
   }
 
-  public static Class<?> getJavaType(final Schema schema) {
-    switch (schema.type()) {
-      case STRING:
-        return String.class;
-      case BOOLEAN:
-        return Boolean.class;
-      case INT32:
-        return Integer.class;
-      case INT64:
-        return Long.class;
-      case FLOAT64:
-        return Double.class;
-      case ARRAY:
-        return List.class;
-      case MAP:
-        return Map.class;
-      case STRUCT:
-        return Struct.class;
-      default:
-        throw new KsqlException("Type is not supported: " + schema.type());
+  public static Class getJavaType(final Schema schema) {
+    final Function<Schema, Type> handler = TYPE_TO_JAVA_TYPE.get(schema.type());
+    if (handler == null) {
+      throw new KsqlException("Type is not supported: " + schema.type());
     }
+
+    return (Class) handler.apply(schema);
+  }
+
+  private static Class toLogicalJavaType(final Schema schema) {
+    if (DecimalUtil.isDecimalSchema(schema)) {
+      return BigDecimal.class;
+    }
+
+    throw new KsqlException("Type is not supported: " + schema.type());
   }
 
   public static Schema getSchemaFromType(final Type type) {
@@ -132,6 +178,70 @@ public final class SchemaUtil {
         .stream()
         .filter(f -> matchFieldName(f, fieldName))
         .findFirst();
+  }
+
+  public static Schema getTypeSchema(final String sqlType) {
+    // Get the simple type form in case there are () or <> in the type
+    final String simpleType = sqlType.split("<|\\(")[0].trim();
+
+    final Function<String, Schema> handler = SQL_STRING_TO_SCHEMA.get(simpleType);
+    if (handler == null) {
+      throw new KsqlException("Unsupported type: " + sqlType);
+    }
+
+    return handler.apply(sqlType);
+  }
+
+  private static Schema getDecimalSchema(final String sqlType) {
+    // DECIMAL must use explicit parameters
+    if (sqlType.equals(DECIMAL)) {
+      throw new KsqlException("DECIMAL is not defined correctly: " + sqlType);
+    }
+
+    final String[] decimalParams = sqlType
+        .substring(DECIMAL.length() + 1, sqlType.length() - 1)
+        .trim()
+        .split(",");
+
+    if (decimalParams.length != 2) {
+      throw new KsqlException("DECIMAL is not defined correctly: " + sqlType);
+    }
+
+    try {
+      final int precision = Integer.parseInt(decimalParams[0].trim());
+      final int scale = Integer.parseInt(decimalParams[1].trim());
+
+      return DecimalUtil.schema(precision, scale);
+    } catch (NumberFormatException e) {
+      throw new KsqlException("DECIMAL is not defined correctly: " + sqlType);
+    }
+  }
+
+  private static Schema getArraySchema(final String sqlType) {
+    return SchemaBuilder.array(
+        getTypeSchema(
+            sqlType.substring(
+                ARRAY.length() + 1,
+                sqlType.length() - 1
+            )
+        )
+    ).optional().build();
+  }
+
+  private static Schema getMapSchema(final String sqlType) {
+    //TODO: For now only primitive data types for map are supported. Will have to add nested
+    // types.
+    final String[] mapTypesStrs = sqlType
+        .substring(MAP.length() + 1, sqlType.length() - 1)
+        .trim()
+        .split(",");
+    if (mapTypesStrs.length != 2) {
+      throw new KsqlException("Map type is not defined correctly: " + sqlType);
+    }
+    final String keyType = mapTypesStrs[0].trim();
+    final String valueType = mapTypesStrs[1].trim();
+    return SchemaBuilder.map(getTypeSchema(keyType), getTypeSchema(valueType))
+        .optional().build();
   }
 
   public static int getFieldIndexByName(final Schema schema, final String fieldName) {
@@ -251,32 +361,45 @@ public final class SchemaUtil {
         .collect(Collectors.joining(", ", "[", "]"));
   }
 
-  public static String getSqlTypeName(final Schema schema) {
-    switch (schema.type()) {
-      case INT32:
-        return "INT";
-      case INT64:
-        return "BIGINT";
-      case FLOAT32:
-      case FLOAT64:
-        return "DOUBLE";
-      case BOOLEAN:
-        return "BOOLEAN";
-      case STRING:
-        return "VARCHAR";
-      case ARRAY:
-        return "ARRAY<" + getSqlTypeName(schema.valueSchema()) + ">";
-      case MAP:
-        return "MAP<"
-            + getSqlTypeName(schema.keySchema())
-            + ","
-            + getSqlTypeName(schema.valueSchema())
-            + ">";
-      case STRUCT:
-        return getStructString(schema);
-      default:
-        throw new KsqlException(String.format("Invalid type in schema: %s.", schema.toString()));
+  private static String toLogicalTypeName(final Schema schema) {
+    if (DecimalUtil.isDecimalSchema(schema)) {
+      return getDecimalString(schema);
     }
+
+    throw new KsqlException(String.format("Invalid type in schema: %s.", schema.toString()));
+  }
+
+  private static String getDecimalString(final Schema schema) {
+    return "DECIMAL("
+        + DecimalUtil.getPrecision(schema)
+        + ","
+        + DecimalUtil.getScale(schema)
+        + ")";
+  }
+
+  private static String toArrayTypeName(final Schema schema) {
+    return "ARRAY<" + getSqlTypeName(schema.valueSchema()) + ">";
+  }
+
+  private static String toMapTypeName(final Schema schema) {
+    return "MAP<"
+        + getSqlTypeName(schema.keySchema())
+        + ","
+        + getSqlTypeName(schema.valueSchema())
+        + ">";
+  }
+
+  private static String toStructTypeName(final Schema schema) {
+    return getStructString(schema);
+  }
+
+  public static String getSqlTypeName(final Schema schema) {
+    final Function<Schema, String> handler = TYPE_TO_SQL_STRING.get(schema.type());
+    if (handler == null) {
+      throw new KsqlException(String.format("Invalid type in schema: %s.", schema.toString()));
+    }
+
+    return handler.apply(schema);
   }
 
   private static String getStructString(final Schema schema) {
@@ -318,11 +441,13 @@ public final class SchemaUtil {
         .replace("-", "_");
   }
 
+  // CHECKSTYLE_RULES.OFF: CyclomaticComplexity
   private static org.apache.avro.Schema getAvroSchemaForField(
       final String namespace,
       final String fieldName,
       final Schema fieldSchema
   ) {
+    // CHECKSTYLE_RULES.ON: CyclomaticComplexity
     switch (fieldSchema.type()) {
       case STRING:
         return unionWithNull(create(org.apache.avro.Schema.Type.STRING));
@@ -334,6 +459,12 @@ public final class SchemaUtil {
         return unionWithNull(create(org.apache.avro.Schema.Type.LONG));
       case FLOAT64:
         return unionWithNull(create(org.apache.avro.Schema.Type.DOUBLE));
+      case BYTES:
+        if (DecimalUtil.isDecimalSchema(fieldSchema)) {
+          return unionWithNull(createAvroDecimal(fieldSchema));
+        }
+
+        throw new KsqlException("Unsupported AVRO type: " + fieldSchema.type().name());
       case ARRAY:
         return unionWithNull(createArray(
             getAvroSchemaForField(namespace, fieldName, fieldSchema.valueSchema())));
@@ -345,6 +476,20 @@ public final class SchemaUtil {
       default:
         throw new KsqlException("Unsupported AVRO type: " + fieldSchema.type().name());
     }
+  }
+
+  private static org.apache.avro.Schema createAvroDecimal(final Schema schema) {
+    final org.apache.avro.Schema avroSchema =
+        org.apache.avro.SchemaBuilder.builder().bytesType();
+
+    final int precision = DecimalUtil.getPrecision(schema);
+    final int scale = DecimalUtil.getScale(schema);
+
+    avroSchema.addProp(AVRO_LOGICAL_TYPE_PARAM, AVRO_LOGICAL_DECIMAL_TYPE);
+    avroSchema.addProp(DecimalUtil.PRECISION_FIELD, new IntNode(precision));
+    avroSchema.addProp(DecimalUtil.SCALE_FIELD, new IntNode(scale));
+
+    return avroSchema;
   }
 
   private static org.apache.avro.Schema unionWithNull(final org.apache.avro.Schema schema) {

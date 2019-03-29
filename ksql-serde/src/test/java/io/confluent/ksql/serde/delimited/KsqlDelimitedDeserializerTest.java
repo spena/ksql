@@ -24,9 +24,13 @@ import io.confluent.ksql.logging.processing.ProcessingLogConfig;
 import io.confluent.ksql.logging.processing.ProcessingLogger;
 import io.confluent.ksql.serde.SerdeTestUtils;
 import io.confluent.ksql.serde.util.SerdeProcessingLogMessageFactory;
+
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Optional;
+
+import io.confluent.ksql.util.DecimalUtil;
 import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
@@ -52,11 +56,15 @@ public class KsqlDelimitedDeserializerTest {
 
   @Before
   public void before() {
+    final int precision = 6;
+    final int scale = 2;
+
     orderSchema = SchemaBuilder.struct()
         .field("ordertime".toUpperCase(), org.apache.kafka.connect.data.Schema.OPTIONAL_INT64_SCHEMA)
         .field("orderid".toUpperCase(), org.apache.kafka.connect.data.Schema.OPTIONAL_INT64_SCHEMA)
         .field("itemid".toUpperCase(), org.apache.kafka.connect.data.Schema.OPTIONAL_STRING_SCHEMA)
         .field("orderunits".toUpperCase(), org.apache.kafka.connect.data.Schema.OPTIONAL_FLOAT64_SCHEMA)
+        .field("orderamount".toUpperCase(), DecimalUtil.schema(precision, scale))
         .build();
     delimitedDeserializer = new KsqlDelimitedDeserializer(
         orderSchema,
@@ -65,16 +73,17 @@ public class KsqlDelimitedDeserializerTest {
 
   @Test
   public void shouldDeserializeDelimitedCorrectly() {
-    final String rowString = "1511897796092,1,item_1,10.0\r\n";
+    final String rowString = "1511897796092,1,item_1,10.0,17.28\r\n";
 
     final GenericRow genericRow = delimitedDeserializer.deserialize(
         "",
         rowString.getBytes(StandardCharsets.UTF_8));
-    assertThat(genericRow.getColumns().size(), equalTo(4));
+    assertThat(genericRow.getColumns().size(), equalTo(5));
     assertThat(genericRow.getColumns().get(0), equalTo(1511897796092L));
     assertThat(genericRow.getColumns().get(1), equalTo(1L));
     assertThat(genericRow.getColumns().get(2), equalTo("item_1"));
     assertThat(genericRow.getColumns().get(3), equalTo(10.0));
+    assertThat(genericRow.getColumns().get(4), equalTo(new BigDecimal("17.28")));
   }
 
   @Test

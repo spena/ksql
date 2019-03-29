@@ -24,9 +24,13 @@ import static org.hamcrest.MatcherAssert.assertThat;
 
 import com.google.common.collect.ImmutableMap;
 import io.confluent.ksql.GenericRow;
+
+import java.math.BigDecimal;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+
+import io.confluent.ksql.util.DecimalUtil;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.connect.data.Struct;
@@ -37,10 +41,14 @@ import org.junit.Test;
 public class ConnectDataTranslatorTest {
   @Test
   public void shouldTranslateStructCorrectly() {
+    final int precision = 6;
+    final int scale =2;
+
     final Schema structSchema = SchemaBuilder
         .struct()
         .field("INT", SchemaBuilder.OPTIONAL_INT32_SCHEMA)
         .field("BIGINT", SchemaBuilder.OPTIONAL_INT64_SCHEMA)
+        .field("BYTES", DecimalUtil.schema(precision, scale))
         .optional()
         .build();
     final Schema rowSchema = SchemaBuilder
@@ -53,6 +61,7 @@ public class ConnectDataTranslatorTest {
     final Struct structColumn = new Struct(structSchema);
     structColumn.put("INT", 123);
     structColumn.put("BIGINT", 456L);
+    structColumn.put("BYTES", BigDecimal.valueOf(17.28));
     connectStruct.put("STRUCT", structColumn);
 
     final ConnectDataTranslator connectToKsqlTranslator = new ConnectDataTranslator(rowSchema);
@@ -64,6 +73,7 @@ public class ConnectDataTranslatorTest {
     assertThat(connectStructColumn.schema(), equalTo(structSchema));
     assertThat(connectStructColumn.get("INT"), equalTo(123));
     assertThat(connectStructColumn.get("BIGINT"), equalTo(456L));
+    assertThat(connectStructColumn.get("BYTES"), equalTo(BigDecimal.valueOf(17.28)));
   }
 
   @Test
