@@ -85,12 +85,21 @@ public final class DecimalUtil {
    * </p>
    * The schema is created by setting the {@link Decimal} logical name, and adding the
    * precision and scale values as a {@link Schema} parameters.
+   * </p>
+   * Precision and scale must be valid Decimal values.
+   * <ul>
+   *   <li>Precision must be >= 1</li>
+   *   <li>Precision must be >= scale</li>
+   *   <li>Scale must be >= 0</li>
+   * </ul>
    *
    * @param precision The precision for the Decimal schema
    * @param scale The scale for the Decimal schema
    * @return A valid Decimal schema
+   * @throws KsqlException if precision and scale parameters are not valid Decimal values
    */
   public static Schema schema(final int precision, final int scale) {
+    validateParameters(precision, scale);
     return builder(precision, scale).build();
   }
 
@@ -103,5 +112,33 @@ public final class DecimalUtil {
         .parameter(PRECISION_FIELD, Integer.toString(precision))
         .parameter(SCALE_FIELD, Integer.toString(scale))
         .optional(); // KSQL only uses optional types
+  }
+
+  public static void validateParameters(final int precision, final int scale) {
+    /*
+     * A DECIMAL schema is defined by two parameters: precision and scale.
+     *
+     * RULES
+     * - The precision value must be higher than 1 and defines the number of digits a decimal value
+     *   can hold.
+     * - The scale value must be higher than 0 and defines the number of digits at the right of
+     *   the decimal point.
+     * - The precision value must be higher or equals to the scale.
+     */
+
+    if (precision < 1) {
+      throw new KsqlException(
+          String.format("DECIMAL precision must be >= 1: DECIMAL(%d,%d)", precision, scale));
+    }
+
+    if (scale < 0) {
+      throw new KsqlException(
+          String.format("DECIMAL scale must be >= 0: DECIMAL(%d,%d)", precision, scale));
+    }
+
+    if (precision < scale) {
+      throw new KsqlException(
+          String.format("DECIMAL precision must be >= scale: DECIMAL(%d,%d)", precision, scale));
+    }
   }
 }

@@ -18,6 +18,7 @@ package io.confluent.ksql.parser.tree;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.errorprone.annotations.Immutable;
+import io.confluent.ksql.util.DecimalUtil;
 import io.confluent.ksql.util.KsqlException;
 
 import java.util.List;
@@ -122,16 +123,6 @@ public final class PrimitiveType extends Type {
   }
 
   private void checkDecimalTypeParameters() {
-    /*
-     * A DECIMAL type is defined by two parameters: precision and scale.
-     *
-     * RULES
-     * - The precision value must be higher than 1 and defines the number of digits a decimal value
-     *   can hold.
-     * - The scale value must be higher than 0 and defines the number of digits at the right of
-     *   the decimal point.
-     * - The precision value must be higher or equals to the scale.
-     */
     if (typeParameters.size() != 2) {
       throw new KsqlException(
           "DECIMAL type requires 2 parameters: " + this);
@@ -140,17 +131,8 @@ public final class PrimitiveType extends Type {
     final int precision = typeParameters.get(0);
     final int scale = typeParameters.get(1);
 
-    if (precision < 1) {
-      throw new KsqlException("DECIMAL precision must be >= 1: " + this);
-    }
-
-    if (scale < 0) {
-      throw new KsqlException("DECIMAL scale must be >= 0: " + this);
-    }
-
-    if (precision < scale) {
-      throw new KsqlException("DECIMAL precision must be >= scale: " + this);
-    }
+    // validateParameters throws a KsqlException in case precision and/or scale are invalid
+    DecimalUtil.validateParameters(precision, scale);
   }
 
   @Override
