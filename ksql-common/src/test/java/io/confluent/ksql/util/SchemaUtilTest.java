@@ -24,6 +24,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 
 import java.lang.reflect.Type;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -111,6 +112,15 @@ public class SchemaUtilTest {
   }
 
   @Test
+  public void shouldGetCorrectJavaClassForDecimal() {
+    final int PRECISION = 6;
+    final int SCALE = 2;
+
+    final Class decimalClazz = SchemaUtil.getJavaType(DecimalUtil.schema(PRECISION, SCALE));
+    assertThat(decimalClazz, equalTo(BigDecimal.class));
+  }
+
+  @Test
   public void shouldGetCorrectSqlTypeNameForBoolean() {
     assertThat(SchemaUtil.getSqlTypeName(Schema.OPTIONAL_BOOLEAN_SCHEMA), equalTo("BOOLEAN"));
   }
@@ -161,6 +171,13 @@ public class SchemaUtilTest {
             "STRUCT<COL1 VARCHAR, COL2 INT, COL3 DOUBLE, COL4 ARRAY<DOUBLE>, COL5 MAP<VARCHAR,DOUBLE>>"));
   }
 
+  @Test
+  public void shouldGetCorrectSqlTypeNameForDecimal() {
+    assertThat(SchemaUtil.getSqlTypeName(
+        DecimalUtil.schema(6,2)),
+        equalTo("DECIMAL(6,2)")
+    );
+  }
 
   @Test
   public void shouldCreateCorrectAvroSchemaWithNullableFields() {

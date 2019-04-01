@@ -26,6 +26,7 @@ import com.google.common.collect.ImmutableSortedMap;
 import com.google.common.collect.Ordering;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -96,16 +97,17 @@ public final class SchemaUtil {
           .put("STRUCT", "STRUCT")
           .build();
 
-  private static final Map<Schema.Type, Class> SCHEMA_TYPE_TO_JAVA_TYPE =
-      ImmutableMap.<Schema.Type, Class>builder()
-          .put(Schema.Type.STRING, String.class)
-          .put(Schema.Type.BOOLEAN, Boolean.class)
-          .put(Schema.Type.INT32, Integer.class)
-          .put(Schema.Type.INT64, Long.class)
-          .put(Schema.Type.FLOAT64, Double.class)
-          .put(Schema.Type.ARRAY, List.class)
-          .put(Schema.Type.MAP, Map.class)
-          .put(Schema.Type.STRUCT, Struct.class)
+  private static final Map<Schema.Type, Function<Schema, Class>> SCHEMA_TYPE_TO_JAVA_TYPE =
+      ImmutableMap.<Schema.Type, Function<Schema, Class>>builder()
+          .put(Schema.Type.STRING, s -> String.class)
+          .put(Schema.Type.BOOLEAN, s -> Boolean.class)
+          .put(Schema.Type.INT32, s -> Integer.class)
+          .put(Schema.Type.INT64, s -> Long.class)
+          .put(Schema.Type.FLOAT64, s -> Double.class)
+          .put(Schema.Type.BYTES, SchemaUtil::toLogicalJavaType)
+          .put(Schema.Type.ARRAY, s -> List.class)
+          .put(Schema.Type.MAP, s -> Map.class)
+          .put(Schema.Type.STRUCT, s -> Struct.class)
           .build();
 
   private static Map<Schema.Type, Function<Schema, String>> SCHEMA_TYPE_TO_SQL_TYPE =
@@ -116,6 +118,7 @@ public final class SchemaUtil {
           .put(Schema.Type.FLOAT64, s -> "DOUBLE")
           .put(Schema.Type.BOOLEAN, s -> "BOOLEAN")
           .put(Schema.Type.STRING, s -> "VARCHAR")
+          .put(Schema.Type.BYTES, SchemaUtil::toLogicalTypeName)
           .put(Schema.Type.ARRAY, s ->
               "ARRAY<" + getSqlTypeName(s.valueSchema()) + ">")
           .put(Schema.Type.MAP, s ->
@@ -137,12 +140,20 @@ public final class SchemaUtil {
   }
 
   public static Class<?> getJavaType(final Schema schema) {
-    final Class typeClazz = SCHEMA_TYPE_TO_JAVA_TYPE.get(schema.type());
-    if (typeClazz == null) {
+    final Function<Schema, Class> handler = SCHEMA_TYPE_TO_JAVA_TYPE.get(schema.type());
+    if (handler == null) {
       throw new KsqlException("Type is not supported: " + schema.type());
     }
 
-    return typeClazz;
+    return handler.apply(schema);
+  }
+
+  private static Class toLogicalJavaType(final Schema schema) {
+    if (DecimalUtil.isDecimalSchema(schema)) {
+      return BigDecimal.class;
+    }
+
+    throw new KsqlException("Type is not supported: " + schema.type());
   }
 
   public static Schema getSchemaFromType(final Type type) {
@@ -274,6 +285,22 @@ public final class SchemaUtil {
     }
 
     return handler.apply(schema);
+  }
+
+  private static String toLogicalTypeName(final Schema schema) {
+    if (DecimalUtil.isDecimalSchema(schema)) {
+      return getDecimalString(schema);
+    }
+
+    throw new KsqlException(String.format("Invalid type in schema: %s.", schema.toString()));
+  }
+
+  private static String getDecimalString(final Schema schema) {
+    return "DECIMAL("
+        + DecimalUtil.getPrecision(schema)
+        + ","
+        + DecimalUtil.getScale(schema)
+        + ")";
   }
 
   private static String getStructString(final Schema schema) {
