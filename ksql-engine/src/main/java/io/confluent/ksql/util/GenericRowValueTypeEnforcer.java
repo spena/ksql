@@ -17,9 +17,11 @@ package io.confluent.ksql.util;
 
 import com.google.common.collect.ImmutableMap;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 
 import org.apache.kafka.connect.data.Field;
 import org.apache.kafka.connect.data.Schema;
@@ -28,16 +30,17 @@ public class GenericRowValueTypeEnforcer {
 
   private final List<Field> fields;
 
-  private static final Map<Schema.Type, Function<Object, Object>> SCHEMA_TYPE_TO_ENFORCE =
-      ImmutableMap.<Schema.Type, Function<Object, Object>>builder()
-          .put(Schema.Type.INT32, v -> enforceInteger(v))
-          .put(Schema.Type.INT64, v -> enforceLong(v))
-          .put(Schema.Type.FLOAT64, v -> enforceDouble(v))
-          .put(Schema.Type.STRING, v -> enforceString(v))
-          .put(Schema.Type.BOOLEAN, v -> enforceBoolean(v))
-          .put(Schema.Type.ARRAY, v -> v)
-          .put(Schema.Type.MAP, v -> v)
-          .put(Schema.Type.STRUCT, v -> v)
+  private static final Map<Schema.Type, BiFunction<Schema, Object, Object>> SCHEMA_TYPE_TO_ENFORCE =
+      ImmutableMap.<Schema.Type, BiFunction<Schema, Object, Object>>builder()
+          .put(Schema.Type.INT32, (s, v) -> enforceInteger(v))
+          .put(Schema.Type.INT64, (s, v) -> enforceLong(v))
+          .put(Schema.Type.FLOAT64, (s, v) -> enforceDouble(v))
+          .put(Schema.Type.STRING, (s, v) -> enforceString(v))
+          .put(Schema.Type.BOOLEAN, (s, v) -> enforceBoolean(v))
+          .put(Schema.Type.BYTES, GenericRowValueTypeEnforcer::enforceLogicalBytes)
+          .put(Schema.Type.ARRAY, (s, v) -> v)
+          .put(Schema.Type.MAP, (s, v) -> v)
+          .put(Schema.Type.STRUCT, (s, v) -> v)
           .build();
 
   public GenericRowValueTypeEnforcer(final Schema schema) {
@@ -50,12 +53,20 @@ public class GenericRowValueTypeEnforcer {
   }
 
   private Object enforceFieldType(final Schema schema, final Object value) {
-    final Function<Object, Object> handler = SCHEMA_TYPE_TO_ENFORCE.get(schema.type());
+    final BiFunction<Schema, Object, Object> handler = SCHEMA_TYPE_TO_ENFORCE.get(schema.type());
     if (handler == null) {
       throw new KsqlException("Type is not supported: " + schema);
     }
 
-    return handler.apply(value);
+    return handler.apply(schema, value);
+  }
+
+  private static Object enforceLogicalBytes(final Schema schema, final Object value) {
+    if (DecimalUtil.isDecimalSchema(schema)) {
+      return enforceDecimal(value);
+    }
+
+    throw new KsqlException("Type is not supported: " + schema);
   }
 
   private static Double enforceDouble(final Object value) {
@@ -141,6 +152,16 @@ public class GenericRowValueTypeEnforcer {
       return null;
     } else {
       throw new KsqlException("Invalid field type. Value must be Boolean.");
+    }
+  }
+
+  private static BigDecimal enforceDecimal(final Object value) {
+    if (value instanceof BigDecimal) {
+      return (BigDecimal) value;
+    } else if (value instanceof String) {
+      return new BigDecimal((String) value);
+    } else {
+      throw new KsqlException("Invalid field type: " + value);
     }
   }
 }

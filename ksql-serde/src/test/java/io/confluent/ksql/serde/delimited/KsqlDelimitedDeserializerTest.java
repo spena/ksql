@@ -25,9 +25,11 @@ import io.confluent.ksql.logging.processing.ProcessingLogConfig;
 import io.confluent.ksql.logging.processing.ProcessingLogger;
 import io.confluent.ksql.serde.SerdeTestUtils;
 import io.confluent.ksql.serde.util.SerdeProcessingLogMessageFactory;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.Optional;
+import io.confluent.ksql.util.DecimalUtil;
 import org.apache.kafka.common.errors.SerializationException;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
@@ -40,11 +42,15 @@ import org.mockito.junit.MockitoJUnitRunner;
 @RunWith(MockitoJUnitRunner.class)
 public class KsqlDelimitedDeserializerTest {
 
+  private static final int DECIMAL_PRECISION = 6;
+  private static final int DECIMAL_SCALE = 2;
+
   private static final Schema ORDER_SCHEMA = SchemaBuilder.struct()
       .field("ordertime".toUpperCase(), Schema.OPTIONAL_INT64_SCHEMA)
       .field("orderid".toUpperCase(), Schema.OPTIONAL_INT64_SCHEMA)
       .field("itemid".toUpperCase(), Schema.OPTIONAL_STRING_SCHEMA)
       .field("orderunits".toUpperCase(), Schema.OPTIONAL_FLOAT64_SCHEMA)
+      .field("orderamount".toUpperCase(), DecimalUtil.schema(DECIMAL_PRECISION, DECIMAL_SCALE))
       .build();
 
   private final ProcessingLogConfig processingLogConfig =
@@ -63,17 +69,18 @@ public class KsqlDelimitedDeserializerTest {
   @Test
   public void shouldDeserializeDelimitedCorrectly() {
     // Given:
-    final byte[] bytes = "1511897796092,1,item_1,10.0\r\n".getBytes(StandardCharsets.UTF_8);
+    final byte[] bytes = "1511897796092,1,item_1,10.0,17.28\r\n".getBytes(StandardCharsets.UTF_8);
 
     // When:
     final GenericRow genericRow = deserializer.deserialize("", bytes);
 
     // Then:
-    assertThat(genericRow.getColumns().size(), is(4));
+    assertThat(genericRow.getColumns().size(), is(5));
     assertThat(genericRow.getColumns().get(0), is(1511897796092L));
     assertThat(genericRow.getColumns().get(1), is(1L));
     assertThat(genericRow.getColumns().get(2), is("item_1"));
     assertThat(genericRow.getColumns().get(3), is(10.0));
+    assertThat(genericRow.getColumns().get(4), is(new BigDecimal("17.28")));
   }
 
   @Test
@@ -100,13 +107,13 @@ public class KsqlDelimitedDeserializerTest {
   @Test
   public void shouldDeserializeJsonCorrectlyWithEmptyFields() {
     // Given:
-    final byte[] bytes = "1511897796092,1,item_1,\r\n".getBytes(StandardCharsets.UTF_8);
+    final byte[] bytes = "1511897796092,1,item_1,,\r\n".getBytes(StandardCharsets.UTF_8);
 
     // When:
     final GenericRow genericRow = deserializer.deserialize("", bytes);
 
     // Then:
-    assertThat(genericRow.getColumns().size(), is(4));
+    assertThat(genericRow.getColumns().size(), is(5));
     assertThat(genericRow.getColumns().get(0), is(1511897796092L));
     assertThat(genericRow.getColumns().get(1), is(1L));
     assertThat(genericRow.getColumns().get(2), is("item_1"));
@@ -125,7 +132,7 @@ public class KsqlDelimitedDeserializerTest {
   @Test(expected = SerializationException.class)
   public void shouldThrowIfRowHasTooMayColumns() {
     // Given:
-    final byte[] bytes = "1511897796092,1,item_1,10.0,extra\r\n".getBytes(StandardCharsets.UTF_8);
+    final byte[] bytes = "1511897796092,1,item_1,10.0,17.28,extra\r\n".getBytes(StandardCharsets.UTF_8);
 
     // When:
     deserializer.deserialize("", bytes);

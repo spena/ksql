@@ -21,6 +21,9 @@ import static org.junit.Assert.assertThat;
 import io.confluent.ksql.util.KsqlException;
 import org.junit.Test;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
+
 public class SerdeUtilsTest {
 
   @Test
@@ -134,5 +137,54 @@ public class SerdeUtilsTest {
   @Test(expected = IllegalArgumentException.class)
   public void shouldFailWhenConvertingIncompatibleDouble() {
     SerdeUtils.toDouble(true);
+  }
+
+  @Test
+  public void shouldConvertToDecimalCorrectly() {
+    final BigDecimal d = SerdeUtils.toDecimal(BigDecimal.valueOf(1.0));
+    assertThat(d, equalTo(BigDecimal.valueOf(1.0)));
+  }
+
+  @Test
+  public void shouldConvertBooleanToDecimalCorrectly() {
+    BigDecimal d = SerdeUtils.toDecimal(true);
+    assertThat(d, equalTo(BigDecimal.valueOf(1)));
+
+    d = SerdeUtils.toDecimal(false);
+    assertThat(d, equalTo(BigDecimal.valueOf(0)));
+  }
+
+  @Test
+  public void shouldConvertIntToDecimalCorrectly() {
+    final BigDecimal d = SerdeUtils.toDecimal(2);
+    assertThat(d, equalTo(BigDecimal.valueOf(2)));
+  }
+
+  @Test
+  public void shouldConvertLongToDecimalCorrectly() {
+    final BigDecimal d = SerdeUtils.toDecimal(2L);
+    assertThat(d, equalTo(BigDecimal.valueOf(2)));
+  }
+
+  @Test
+  public void shouldConvertDoubleToDecimalCorrectly() {
+    final BigDecimal d = SerdeUtils.toDecimal(2.0);
+    assertThat(d, equalTo(BigDecimal.valueOf(2.0)));
+  }
+
+  @Test
+  public void shouldConvertStringToDecimalCorrectly() {
+    final BigDecimal d = SerdeUtils.toDecimal("2.0");
+    assertThat(d, equalTo(BigDecimal.valueOf(2.0)));
+  }
+
+  @Test(expected = KsqlException.class)
+  public void shouldNotConvertIncorrectStringToDecimal() {
+    SerdeUtils.toDouble("1!:");
+  }
+
+  @Test(expected = IllegalArgumentException.class)
+  public void shouldFailWhenConvertingIncompatibleDecimal() {
+    SerdeUtils.toDecimal(new ArrayList<>());
   }
 }

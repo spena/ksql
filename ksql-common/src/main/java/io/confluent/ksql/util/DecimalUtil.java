@@ -16,6 +16,7 @@
 package io.confluent.ksql.util;
 
 import com.google.common.base.Preconditions;
+import java.math.BigDecimal;
 import org.apache.kafka.connect.data.Decimal;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaBuilder;
@@ -140,5 +141,46 @@ public final class DecimalUtil {
       throw new KsqlException(
           String.format("DECIMAL precision must be >= scale: DECIMAL(%d,%d)", precision, scale));
     }
+  }
+
+  /**
+   * Forces a BigDecimal value to fit into the specified precision and scale.
+   * </p>
+   * If the scale is bigger than the value scale, then the decimal is rounded
+   * (round up if discarded decimal fraction is >= 0.5).
+   * </p>
+   * If the left digits length of the decimal point is bigger than the left digits length
+   * of the value, then a {@link KsqlException} exception is thrown.
+   *
+   * @param maxPrecision The maximum precision
+   * @param maxScale The maximum scale
+   * @param value The value to be enforced to the destination precision and scale
+   * @return The original decimal if no adjustment is necessary. Otherwise, the adjusted decimal is
+   *         returned
+   * @throws KsqlException if the adjustment cannot be done
+   */
+  public static BigDecimal enforcePrecisionScale(
+      final BigDecimal value,
+      final int maxPrecision,
+      final int maxScale
+  ) {
+    if (value == null) {
+      return null;
+    }
+
+    validateParameters(maxPrecision, maxScale);
+
+    final int maxLeftDigits = maxPrecision - maxScale;
+    if ((value.precision() - value.scale()) > maxLeftDigits) {
+      throw new KsqlException(String.format("Decimal precision/scale for value '%s' does not "
+              + "fit into destination precision/scale: %d,%d",
+          value.toPlainString(), maxPrecision, maxScale));
+    }
+
+    if (value.scale() <= maxScale) {
+      return value;
+    }
+
+    return value.setScale(maxScale, BigDecimal.ROUND_HALF_UP);
   }
 }
