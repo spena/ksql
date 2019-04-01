@@ -308,6 +308,8 @@ public class KsqlRestClient implements Closeable {
       this.response = response;
 
       this.objectMapper = new ObjectMapper();
+      // Deserialize float or double value into a BigDecimal so precision is not loose
+      this.objectMapper.configure(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS, true);
       this.isr = new InputStreamReader(
           (InputStream) response.getEntity(),
           StandardCharsets.UTF_8
