@@ -52,6 +52,7 @@ import io.confluent.ksql.rest.server.resources.ServerInfoResource;
 import io.confluent.ksql.rest.server.resources.StatusResource;
 import io.confluent.ksql.rest.server.resources.streaming.StreamedQueryResource;
 import io.confluent.ksql.rest.server.resources.streaming.WSQueryEndpoint;
+import io.confluent.ksql.rest.server.security.KsqlSecurityFilter;
 import io.confluent.ksql.rest.util.ClusterTerminator;
 import io.confluent.ksql.rest.util.KsqlInternalTopicUtils;
 import io.confluent.ksql.rest.util.ProcessingLogServerUtils;
@@ -109,6 +110,8 @@ public final class KsqlRestApplication extends Application<KsqlRestConfig> imple
 
   public static final String COMMANDS_KSQL_TOPIC_NAME = "__KSQL_COMMANDS_TOPIC";
   private static final String COMMANDS_STREAM_NAME = "KSQL_COMMANDS";
+
+  private static final String SCOPE_CLUSTER = "CLUSTER";
 
   private final KsqlConfig ksqlConfig;
   private final KsqlEngine ksqlEngine;
@@ -169,6 +172,7 @@ public final class KsqlRestApplication extends Application<KsqlRestConfig> imple
     config.register(ksqlResource);
     config.register(streamedQueryResource);
     config.register(new KsqlExceptionMapper());
+    config.register(new KsqlSecurityFilter(SCOPE_CLUSTER, ksqlConfig));
   }
 
   @Override

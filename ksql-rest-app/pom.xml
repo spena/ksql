@@ -85,6 +85,12 @@
             <version>${confluent.version}</version>
         </dependency>
 
+        <dependency>
+            <groupId>io.confluent</groupId>
+            <artifactId>rest-authorizer</artifactId>
+            <version>${confluent.version}</version>
+        </dependency>
+
         <!-- Required for running tests -->
 
         <dependency>
