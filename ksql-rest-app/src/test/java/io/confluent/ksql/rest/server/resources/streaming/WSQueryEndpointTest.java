@@ -51,6 +51,7 @@ import io.confluent.ksql.rest.server.resources.streaming.WSQueryEndpoint.QueryPu
 import io.confluent.ksql.rest.server.resources.streaming.WSQueryEndpoint.ServiceContextFactory;
 import io.confluent.ksql.rest.server.security.KsqlAuthorizationProvider;
 import io.confluent.ksql.rest.server.security.KsqlSecurityExtension;
+import io.confluent.ksql.rest.server.security.KsqlUserClientContext;
 import io.confluent.ksql.rest.server.state.ServerState;
 import io.confluent.ksql.services.KafkaTopicClient;
 import io.confluent.ksql.services.ServiceContext;
@@ -143,6 +144,8 @@ public class WSQueryEndpointTest {
   private ServiceContextFactory serviceContextFactory;
   @Mock
   private ServerState serverState;
+  @Mock
+  private KsqlUserClientContext userContext;
   @Captor
   private ArgumentCaptor<CloseReason> closeReasonCaptor;
   private Query query;
@@ -158,9 +161,9 @@ public class WSQueryEndpointTest {
     when(session.getUserPrincipal()).thenReturn(principal);
     when(statementParser.parseSingleStatement(anyString()))
         .thenAnswer(invocation -> PreparedStatement.of(invocation.getArgument(0).toString(), query));
-    when(securityExtension.getSchemaRegistryClientSupplier(principal))
-        .thenReturn(schemaRegistryClientSupplier);
-    when(securityExtension.getKafkaClientSupplier(principal)).thenReturn(topicClientSupplier);
+    when(securityExtension.getUserClientContext(principal)).thenReturn(Optional.of(userContext));
+    when(userContext.getSchemaRegistryClientSupplier()).thenReturn(schemaRegistryClientSupplier);
+    when(userContext.getKafkaClientSupplier()).thenReturn(topicClientSupplier);
     when(securityExtension.getAuthorizationProvider())
         .thenReturn(Optional.of(authorizationProvider));
     when(serviceContextFactory.create(ksqlConfig, topicClientSupplier, schemaRegistryClientSupplier))
@@ -379,7 +382,7 @@ public class WSQueryEndpointTest {
   }
 
   @Test
-  public void shouldCreateImpersonatedServiceContext() {
+  public void shouldCreateUserServiceContext() {
     // Given:
     givenRequestIs(query);
 
@@ -387,13 +390,14 @@ public class WSQueryEndpointTest {
     wsQueryEndpoint.onOpen(session, null);
 
     // Then:
-    verify(securityExtension).getKafkaClientSupplier(eq(principal));
-    verify(securityExtension).getSchemaRegistryClientSupplier(eq(principal));
+    verify(securityExtension).getUserClientContext(eq(principal));
+    verify(userContext).getKafkaClientSupplier();
+    verify(userContext).getSchemaRegistryClientSupplier();
     verify(serviceContextFactory).create(ksqlConfig, topicClientSupplier, schemaRegistryClientSupplier);
   }
 
   @Test
-  public void shouldCloseImpersonatedServiceContextOnClose() {
+  public void shouldCloseUserServiceContextOnClose() {
     // Given:
     givenRequestIs(query);
 

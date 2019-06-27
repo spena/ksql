@@ -33,6 +33,7 @@ import io.confluent.ksql.rest.entity.Versions;
 import io.confluent.ksql.rest.server.StatementParser;
 import io.confluent.ksql.rest.server.computation.CommandQueue;
 import io.confluent.ksql.rest.server.security.KsqlSecurityExtension;
+import io.confluent.ksql.rest.server.security.KsqlUserClientContext;
 import io.confluent.ksql.rest.server.state.ServerState;
 import io.confluent.ksql.rest.util.CommandStoreUtil;
 import io.confluent.ksql.services.DefaultServiceContext;
@@ -215,11 +216,7 @@ public class WSQueryEndpoint {
 
       final PreparedStatement<?> preparedStatement = parseStatement(request);
 
-      final Principal principal = session.getUserPrincipal();
-      serviceContext = serviceContextFactory.create(
-          ksqlConfig,
-          securityExtension.getKafkaClientSupplier(principal),
-          securityExtension.getSchemaRegistryClientSupplier(principal));
+      serviceContext = createUserServiceContext(session.getUserPrincipal());
 
       topicAccessValidator.validate(
           serviceContext,
@@ -237,6 +234,21 @@ public class WSQueryEndpoint {
       log.debug("Error processing request", e);
       SessionUtil.closeSilently(session, CloseCodes.CANNOT_ACCEPT, e.getMessage());
     }
+  }
+
+  private ServiceContext createUserServiceContext(final Principal principal) {
+    // Creates a ServiceContext using the user's credentials, so the WS query topics are
+    // accessed with the user permission context (defaults to KSQL permission context)
+
+    final Optional<KsqlUserClientContext> userContext = securityExtension.getUserClientContext(principal);
+    if (!userContext.isPresent()) {
+      return DefaultServiceContext.create(ksqlConfig);
+    }
+
+    return userContext.map(ctx -> serviceContextFactory.create(
+        ksqlConfig,
+        ctx.getKafkaClientSupplier(),
+        ctx.getSchemaRegistryClientSupplier())).get();
   }
 
   @OnClose

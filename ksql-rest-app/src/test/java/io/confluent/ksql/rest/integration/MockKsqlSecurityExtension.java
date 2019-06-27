@@ -1,16 +1,13 @@
 package io.confluent.ksql.rest.integration;
 
-import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
 import io.confluent.ksql.rest.server.security.KsqlAuthorizationProvider;
 import io.confluent.ksql.rest.server.security.KsqlSecurityExtension;
+import io.confluent.ksql.rest.server.security.KsqlUserClientContext;
 import io.confluent.ksql.util.KsqlConfig;
-import io.confluent.ksql.util.KsqlException;
-import org.apache.kafka.streams.KafkaClientSupplier;
 
 import javax.ws.rs.core.Configurable;
 import java.security.Principal;
 import java.util.Optional;
-import java.util.function.Supplier;
 
 /**
  * Mock the Security extension and authorization provider for all tests
@@ -33,17 +30,12 @@ public class MockKsqlSecurityExtension implements KsqlSecurityExtension {
   }
 
   @Override
+  public Optional<KsqlUserClientContext> getUserClientContext(Principal principal) {
+    return Optional.empty();
+  }
+
+  @Override
   public void register(Configurable<?> configurable) {
-  }
-
-  @Override
-  public KafkaClientSupplier getKafkaClientSupplier(Principal principal) throws KsqlException {
-    return null;
-  }
-
-  @Override
-  public Supplier<SchemaRegistryClient> getSchemaRegistryClientSupplier(Principal principal) throws KsqlException {
-    return null;
   }
 
   @Override
