@@ -35,10 +35,6 @@ public class MockKsqlSecurityExtension implements KsqlSecurityExtension {
   }
 
   @Override
-  public void register(Configurable<?> configurable) {
-  }
-
-  @Override
   public void close() {
 
   }

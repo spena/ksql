@@ -19,7 +19,6 @@ import io.confluent.ksql.util.KsqlConfig;
 import io.confluent.ksql.util.KsqlException;
 import java.security.Principal;
 import java.util.Optional;
-import javax.ws.rs.core.Configurable;
 
 /**
  * This interface provides a security extension (or plugin) to the KSQL server in order to
@@ -66,17 +65,6 @@ public interface KsqlSecurityExtension extends AutoCloseable {
    *         then KSQL will disable the user context functionality.
    */
   Optional<KsqlUserClientContext> getUserClientContext(Principal principal);
-
-  /**
-   * Registers other security extension filters.
-   * </p>
-   * A {@link Configurable} is passed so that the extension can register other REST filters to
-   * to the KSQL REST endpoints (i.e. Impersonation context).
-   *
-   * @param configurable The {@link Configurable} object where to register the security plugins.
-   * @throws KsqlException If an error occurs while registering the REST security plugin.
-   */
-  void register(Configurable<?> configurable);
 
   /**
    * Closes the current security extension. This is called in case the implementation requires
