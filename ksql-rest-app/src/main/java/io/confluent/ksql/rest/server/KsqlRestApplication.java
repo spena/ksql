@@ -40,7 +40,6 @@ import io.confluent.ksql.rest.server.computation.CommandQueue;
 import io.confluent.ksql.rest.server.computation.CommandRunner;
 import io.confluent.ksql.rest.server.computation.CommandStore;
 import io.confluent.ksql.rest.server.computation.StatementExecutor;
-import io.confluent.ksql.rest.server.context.KsqlRestServiceContextBinder;
 import io.confluent.ksql.rest.server.filters.KsqlAuthorizationFilter;
 import io.confluent.ksql.rest.server.resources.KsqlExceptionMapper;
 import io.confluent.ksql.rest.server.resources.KsqlResource;
@@ -87,6 +86,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.Executors;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -98,7 +98,6 @@ import javax.websocket.server.ServerEndpointConfig.Configurator;
 import javax.ws.rs.core.Configurable;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.websocket.jsr356.server.ServerContainer;
-import org.glassfish.hk2.utilities.Binder;
 import org.glassfish.jersey.server.ServerProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -121,7 +120,6 @@ public final class KsqlRestApplication extends Application<KsqlRestConfig> imple
   private final KsqlResource ksqlResource;
   private final VersionCheckerAgent versionCheckerAgent;
   private final ServiceContext serviceContext;
-  private final Function<KsqlConfig, Binder> serviceContextBinderFactory;
   private final KsqlSecurityExtension securityExtension;
   private final ServerState serverState;
   private final ProcessingLogContext processingLogContext;
@@ -145,7 +143,6 @@ public final class KsqlRestApplication extends Application<KsqlRestConfig> imple
       final StreamedQueryResource streamedQueryResource,
       final KsqlResource ksqlResource,
       final VersionCheckerAgent versionCheckerAgent,
-      final Function<KsqlConfig, Binder> serviceContextBinderFactory,
       final KsqlSecurityExtension securityExtension,
       final ServerState serverState,
       final ProcessingLogContext processingLogContext,
@@ -169,8 +166,6 @@ public final class KsqlRestApplication extends Application<KsqlRestConfig> imple
     this.preconditions = Objects.requireNonNull(preconditions, "preconditions");
     this.versionCheckerAgent =
         Objects.requireNonNull(versionCheckerAgent, "versionCheckerAgent");
-    this.serviceContextBinderFactory = Objects.requireNonNull(
-        serviceContextBinderFactory, "serviceContextBinderFactory");
     this.securityExtension = Objects.requireNonNull(
         securityExtension, "securityExtension"
     );
@@ -326,7 +321,6 @@ public final class KsqlRestApplication extends Application<KsqlRestConfig> imple
         new JacksonMessageBodyProvider(JsonMapper.INSTANCE.mapper);
     config.register(jsonProvider);
     config.register(JsonParseExceptionMapper.class);
-    config.register(serviceContextBinderFactory.apply(ksqlConfig));
 
     // Don't want to buffer rows when streaming JSON in a request to the query resource
     config.property(ServerProperties.OUTBOUND_CONTENT_LENGTH_BUFFER, 0);
@@ -402,7 +396,7 @@ public final class KsqlRestApplication extends Application<KsqlRestConfig> imple
         versionCheckerFactory,
         maxStatementRetries,
         serviceContext,
-        KsqlRestServiceContextBinder::new);
+        (config, extension) -> new UserServiceContextFactory(config, extension));
   }
 
   static KsqlRestApplication buildApplication(
@@ -410,7 +404,8 @@ public final class KsqlRestApplication extends Application<KsqlRestConfig> imple
       final Function<Supplier<Boolean>, VersionCheckerAgent> versionCheckerFactory,
       final int maxStatementRetries,
       final ServiceContext serviceContext,
-      final Function<KsqlConfig, Binder> serviceContextBinderFactory
+      final BiFunction<KsqlConfig, KsqlSecurityExtension, UserServiceContextFactory>
+          serviceContextFactory
   ) {
     final String ksqlInstallDir = restConfig.getString(KsqlRestConfig.INSTALL_DIR_CONFIG);
 
@@ -470,7 +465,7 @@ public final class KsqlRestApplication extends Application<KsqlRestConfig> imple
         Duration.ofMillis(restConfig.getLong(DISTRIBUTED_COMMAND_RESPONSE_TIMEOUT_MS_CONFIG)),
         versionChecker::updateLastRequestTime,
         topicAccessValidator,
-        new UserServiceContextFactory(ksqlConfig, securityExtension)
+        serviceContextFactory.apply(ksqlConfig, securityExtension)
     );
 
     final KsqlResource ksqlResource = new KsqlResource(
@@ -481,7 +476,7 @@ public final class KsqlRestApplication extends Application<KsqlRestConfig> imple
         versionChecker::updateLastRequestTime,
         Injectors.DEFAULT,
         topicAccessValidator,
-        new UserServiceContextFactory(ksqlConfig, securityExtension)
+        serviceContextFactory.apply(ksqlConfig, securityExtension)
     );
 
     final List<String> managedTopics = new LinkedList<>();
@@ -514,7 +509,6 @@ public final class KsqlRestApplication extends Application<KsqlRestConfig> imple
         streamedQueryResource,
         ksqlResource,
         versionChecker,
-        serviceContextBinderFactory,
         securityExtension,
         serverState,
         processingLogContext,

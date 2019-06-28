@@ -41,7 +41,6 @@ import io.confluent.ksql.parser.tree.CreateSource;
 import io.confluent.ksql.rest.server.computation.CommandRunner;
 import io.confluent.ksql.rest.server.computation.CommandStore;
 import io.confluent.ksql.rest.server.computation.QueuedCommandStatus;
-import io.confluent.ksql.rest.server.context.KsqlRestServiceContextBinder;
 import io.confluent.ksql.rest.server.filters.KsqlAuthorizationFilter;
 import io.confluent.ksql.rest.server.resources.KsqlResource;
 import io.confluent.ksql.rest.server.resources.RootDocument;
@@ -170,7 +169,6 @@ public class KsqlRestApplicationTest {
         streamedQueryResource,
         ksqlResource,
         versionCheckerAgent,
-        KsqlRestServiceContextBinder::new,
         securityExtension,
         serverState,
         processingLogContext,
