@@ -50,6 +50,7 @@ import io.confluent.ksql.rest.entity.StreamedRow;
 import io.confluent.ksql.rest.server.StatementParser;
 import io.confluent.ksql.rest.server.computation.CommandQueue;
 import io.confluent.ksql.rest.server.resources.streaming.StreamedQueryResource;
+import io.confluent.ksql.rest.server.security.UserServiceContextFactory;
 import io.confluent.ksql.schema.ksql.LogicalSchema;
 import io.confluent.ksql.services.KafkaTopicClient;
 import io.confluent.ksql.services.ServiceContext;
@@ -72,6 +73,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.SecurityContext;
 import javax.ws.rs.core.StreamingOutput;
 import org.apache.kafka.connect.data.SchemaBuilder;
 import org.apache.kafka.streams.KafkaStreams;
@@ -116,6 +118,10 @@ public class StreamedQueryResourceTest {
   private ActivenessRegistrar activenessRegistrar;
   @Mock
   private Consumer<QueryMetadata> queryCloseCallback;
+  @Mock
+  private UserServiceContextFactory userServiceContextFactory;
+  @Mock
+  private SecurityContext securityContext;
   private StreamedQueryResource testResource;
 
   private final static String queryString = "SELECT * FROM test_stream;";
@@ -129,7 +135,8 @@ public class StreamedQueryResourceTest {
     statement = PreparedStatement.of("s", mock(Statement.class));
     expect(mockStatementParser.parseSingleStatement(queryString))
         .andReturn(statement);
-    replay(mockKsqlEngine, mockStatementParser);
+    expect(userServiceContextFactory.create(EasyMock.anyObject())).andReturn(serviceContext);
+    replay(mockKsqlEngine, mockStatementParser, userServiceContextFactory);
 
     testResource = new StreamedQueryResource(
         ksqlConfig,
@@ -141,7 +148,8 @@ public class StreamedQueryResourceTest {
         activenessRegistrar,
         (sc, metastore, statement) -> {
           return;
-        });
+        },
+        userServiceContextFactory);
   }
 
   @Test
@@ -162,7 +170,7 @@ public class StreamedQueryResourceTest {
 
     // When:
     testResource.streamQuery(
-        serviceContext,
+        securityContext,
         new KsqlRequest("query", Collections.emptyMap(), null)
     );
   }
@@ -174,7 +182,7 @@ public class StreamedQueryResourceTest {
 
     // When:
     testResource.streamQuery(
-        serviceContext,
+        securityContext,
         new KsqlRequest(queryString, Collections.emptyMap(), null)
     );
 
@@ -192,7 +200,7 @@ public class StreamedQueryResourceTest {
 
     // When:
     testResource.streamQuery(
-        serviceContext,
+        securityContext,
         new KsqlRequest(queryString, Collections.emptyMap(), 3L)
     );
 
@@ -219,7 +227,7 @@ public class StreamedQueryResourceTest {
 
     // When:
     testResource.streamQuery(
-        serviceContext,
+        securityContext,
         new KsqlRequest(queryString, Collections.emptyMap(), 3L)
     );
   }
@@ -303,7 +311,7 @@ public class StreamedQueryResourceTest {
 
     final Response response =
         testResource.streamQuery(
-            serviceContext,
+            securityContext,
             new KsqlRequest(queryString, requestStreamsProperties, null)
         );
     final PipedOutputStream responseOutputStream = new EOFPipedOutputStream();
@@ -428,7 +436,7 @@ public class StreamedQueryResourceTest {
 
     // When:
     testResource.streamQuery(
-        serviceContext,
+        securityContext,
         new KsqlRequest(queryString, Collections.emptyMap(), null)
     );
 

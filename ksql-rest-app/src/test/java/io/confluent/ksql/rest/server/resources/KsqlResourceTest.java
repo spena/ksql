@@ -111,6 +111,7 @@ import io.confluent.ksql.rest.server.computation.CommandId;
 import io.confluent.ksql.rest.server.computation.CommandStatusFuture;
 import io.confluent.ksql.rest.server.computation.CommandStore;
 import io.confluent.ksql.rest.server.computation.QueuedCommandStatus;
+import io.confluent.ksql.rest.server.security.UserServiceContextFactory;
 import io.confluent.ksql.rest.util.EntityUtil;
 import io.confluent.ksql.rest.util.TerminateCluster;
 import io.confluent.ksql.schema.ksql.LogicalSchema;
@@ -147,6 +148,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.SecurityContext;
+
 import org.apache.avro.Schema.Type;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -251,6 +254,10 @@ public class KsqlResourceTest {
   private Injector sandboxTopicInjector;
   @Mock
   private TopicAccessValidator topicAccessValidator;
+  @Mock
+  private UserServiceContextFactory userServiceContextFactory;
+  @Mock
+  private SecurityContext securityContext;
 
   private KsqlResource ksqlResource;
   private SchemaRegistryClient schemaRegistryClient;
@@ -311,6 +318,8 @@ public class KsqlResourceTest {
         .thenAnswer(inv -> inv.getArgument(0));
     when(topicInjector.inject(any()))
         .thenAnswer(inv -> inv.getArgument(0));
+
+    when(userServiceContextFactory.create(any())).thenReturn(serviceContext);
 
     setUpKsqlResource();
   }
@@ -1482,7 +1491,7 @@ public class KsqlResourceTest {
   @Test
   public void shouldUpdateTheLastRequestTime() {
     // When:
-    ksqlResource.handleKsqlStatements(serviceContext, VALID_EXECUTABLE_REQUEST);
+    ksqlResource.handleKsqlStatements(securityContext, VALID_EXECUTABLE_REQUEST);
 
     // Then:
     verify(activenessRegistrar).updateLastRequestTime();
@@ -1492,7 +1501,7 @@ public class KsqlResourceTest {
   public void shouldHandleTerminateRequestCorrectly() {
     // When:
     final Response response = ksqlResource.terminateCluster(
-        serviceContext,
+        securityContext,
         VALID_TERMINATE_REQUEST
     );
 
@@ -1521,7 +1530,7 @@ public class KsqlResourceTest {
 
     // When:
     final Response response = ksqlResource.terminateCluster(
-        serviceContext,
+        securityContext,
         VALID_TERMINATE_REQUEST
     );
 
@@ -1545,7 +1554,7 @@ public class KsqlResourceTest {
         "Invalid pattern: [Invalid Regex"))));
 
     // When:
-    ksqlResource.terminateCluster(serviceContext, request);
+    ksqlResource.terminateCluster(securityContext, request);
   }
 
   @Test
@@ -1760,7 +1769,7 @@ public class KsqlResourceTest {
 
   private KsqlErrorMessage makeFailingRequest(final KsqlRequest ksqlRequest, final Code errorCode) {
     try {
-      final Response response = ksqlResource.handleKsqlStatements(serviceContext, ksqlRequest);
+      final Response response = ksqlResource.handleKsqlStatements(securityContext, ksqlRequest);
       assertThat(response.getStatus(), is(errorCode.getCode()));
       assertThat(response.getEntity(), instanceOf(KsqlErrorMessage.class));
       return (KsqlErrorMessage) response.getEntity();
@@ -1820,7 +1829,7 @@ public class KsqlResourceTest {
       final KsqlRequest ksqlRequest,
       final Class<T> expectedEntityType) {
 
-    final Response response = ksqlResource.handleKsqlStatements(serviceContext, ksqlRequest);
+    final Response response = ksqlResource.handleKsqlStatements(securityContext, ksqlRequest);
     if (response.getStatus() != Response.Status.OK.getStatusCode()) {
       throw new KsqlRestException(response);
     }
@@ -1868,7 +1877,8 @@ public class KsqlResourceTest {
             schemaInjectorFactory.apply(sc),
             topicInjectorFactory.apply(ec),
             new TopicDeleteInjector(ec, sc)),
-        topicAccessValidator
+        topicAccessValidator,
+        userServiceContextFactory
     );
   }
 

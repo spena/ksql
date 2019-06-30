@@ -21,7 +21,9 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -40,6 +42,7 @@ import io.confluent.ksql.rest.server.StatementParser;
 import io.confluent.ksql.rest.server.computation.CommandId.Action;
 import io.confluent.ksql.rest.server.computation.CommandId.Type;
 import io.confluent.ksql.rest.server.resources.KsqlResource;
+import io.confluent.ksql.rest.server.security.UserServiceContextFactory;
 import io.confluent.ksql.rest.server.state.ServerState;
 import io.confluent.ksql.rest.util.ClusterTerminator;
 import io.confluent.ksql.schema.ksql.LogicalSchema;
@@ -64,21 +67,42 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.SecurityContext;
 import org.hamcrest.Description;
 import org.hamcrest.Matcher;
 import org.hamcrest.TypeSafeDiagnosingMatcher;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.junit.MockitoJUnitRunner;
 
+@RunWith(MockitoJUnitRunner.class)
 public class RecoveryTest {
 
   private final KsqlConfig ksqlConfig = KsqlConfigTestUtil.create("0.0.0.0");
   private final List<QueuedCommand> commands = new LinkedList<>();
   private final FakeKafkaTopicClient topicClient = new FakeKafkaTopicClient();
   private final ServiceContext serviceContext = TestServiceContext.create(topicClient);
-  private final KsqlServer server1 = new KsqlServer(commands);
-  private final KsqlServer server2 = new KsqlServer(commands);
+
+  private KsqlServer server1;
+  private KsqlServer server2 ;
+
+  @Mock
+  private SecurityContext securityContext;
+  @Mock
+  private UserServiceContextFactory serviceContextFactory;
+
+  @Before
+  public void setUp() {
+    when(serviceContextFactory.create(any())).thenReturn(serviceContext);
+
+    server1 = new KsqlServer(commands);
+    server2 = new KsqlServer(commands);
+
+    topicClient.preconditionTopicExists("A");
+  }
 
   @After
   public void tearDown() {
@@ -175,7 +199,8 @@ public class RecoveryTest {
           Injectors.DEFAULT,
           (sc, metastore, statement) -> {
             return;
-          });
+          },
+          serviceContextFactory);
       this.statementExecutor = new StatementExecutor(
           ksqlConfig,
           ksqlEngine,
@@ -199,7 +224,7 @@ public class RecoveryTest {
 
     void submitCommands(final String ...statements) {
       for (final String statement : statements) {
-        final Response response = ksqlResource.handleKsqlStatements(serviceContext,
+        final Response response = ksqlResource.handleKsqlStatements(securityContext,
             new KsqlRequest(statement, Collections.emptyMap(), null));
         assertThat(response.getStatus(), equalTo(200));
         executeCommands();
@@ -505,11 +530,6 @@ public class RecoveryTest {
     assertThat(queries.keySet(), equalTo(recoveredQueries.keySet()));
     queries.forEach(
         (queryId, query) -> assertThat(query, sameQuery(recoveredQueries.get(queryId))));
-  }
-
-  @Before
-  public void setUp() {
-    topicClient.preconditionTopicExists("A");
   }
 
   @Test

@@ -28,6 +28,7 @@ import io.confluent.ksql.rest.server.StatementParser;
 import io.confluent.ksql.rest.server.computation.CommandQueue;
 import io.confluent.ksql.rest.server.resources.Errors;
 import io.confluent.ksql.rest.server.resources.KsqlRestException;
+import io.confluent.ksql.rest.server.security.UserServiceContextFactory;
 import io.confluent.ksql.rest.util.CommandStoreUtil;
 import io.confluent.ksql.services.ServiceContext;
 import io.confluent.ksql.statement.ConfiguredStatement;
@@ -47,6 +48,8 @@ import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.SecurityContext;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -66,6 +69,7 @@ public class StreamedQueryResource {
   private final ObjectMapper objectMapper;
   private final ActivenessRegistrar activenessRegistrar;
   private final TopicAccessValidator topicAccessValidator;
+  private final UserServiceContextFactory userServiceContextFactory;
 
   public StreamedQueryResource(
       final KsqlConfig ksqlConfig,
@@ -75,7 +79,8 @@ public class StreamedQueryResource {
       final Duration disconnectCheckInterval,
       final Duration commandQueueCatchupTimeout,
       final ActivenessRegistrar activenessRegistrar,
-      final TopicAccessValidator topicAccessValidator
+      final TopicAccessValidator topicAccessValidator,
+      final UserServiceContextFactory userServiceContextFactory
   ) {
     this.ksqlConfig = Objects.requireNonNull(ksqlConfig, "ksqlConfig");
     this.ksqlEngine = Objects.requireNonNull(ksqlEngine, "ksqlEngine");
@@ -89,13 +94,17 @@ public class StreamedQueryResource {
     this.activenessRegistrar =
         Objects.requireNonNull(activenessRegistrar, "activenessRegistrar");
     this.topicAccessValidator = topicAccessValidator;
+    this.userServiceContextFactory =
+        Objects.requireNonNull(userServiceContextFactory, "userServiceContextFactory");
   }
 
   @POST
   public Response streamQuery(
-      @Context final ServiceContext serviceContext,
+      @Context final SecurityContext securityContext,
       final KsqlRequest request
   ) throws Exception {
+    final ServiceContext serviceContext = createUserServiceContext(securityContext);
+
     activenessRegistrar.updateLastRequestTime();
 
     final PreparedStatement<?> statement = parseStatement(request);
@@ -216,5 +225,9 @@ public class StreamedQueryResource {
 
     log.info("Printing topic '{}'", topicName);
     return Response.ok().entity(topicStreamWriter).build();
+  }
+
+  private ServiceContext createUserServiceContext(final SecurityContext securityContext) {
+    return userServiceContextFactory.create(securityContext.getUserPrincipal());
   }
 }

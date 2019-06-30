@@ -51,6 +51,7 @@ import io.confluent.ksql.rest.server.resources.streaming.StreamedQueryResource;
 import io.confluent.ksql.rest.server.resources.streaming.WSQueryEndpoint;
 import io.confluent.ksql.rest.server.security.KsqlDefaultSecurityExtension;
 import io.confluent.ksql.rest.server.security.KsqlSecurityExtension;
+import io.confluent.ksql.rest.server.security.UserServiceContextFactory;
 import io.confluent.ksql.rest.server.state.ServerState;
 import io.confluent.ksql.rest.server.state.ServerStateDynamicBinding;
 import io.confluent.ksql.rest.util.ClusterTerminator;
@@ -471,7 +472,8 @@ public final class KsqlRestApplication extends Application<KsqlRestConfig> imple
             restConfig.getLong(KsqlRestConfig.STREAMED_QUERY_DISCONNECT_CHECK_MS_CONFIG)),
         Duration.ofMillis(restConfig.getLong(DISTRIBUTED_COMMAND_RESPONSE_TIMEOUT_MS_CONFIG)),
         versionChecker::updateLastRequestTime,
-        topicAccessValidator
+        topicAccessValidator,
+        new UserServiceContextFactory(ksqlConfig, securityExtension)
     );
 
     final KsqlResource ksqlResource = new KsqlResource(
@@ -481,7 +483,9 @@ public final class KsqlRestApplication extends Application<KsqlRestConfig> imple
         Duration.ofMillis(restConfig.getLong(DISTRIBUTED_COMMAND_RESPONSE_TIMEOUT_MS_CONFIG)),
         versionChecker::updateLastRequestTime,
         Injectors.DEFAULT,
-        topicAccessValidator);
+        topicAccessValidator,
+        new UserServiceContextFactory(ksqlConfig, securityExtension)
+    );
 
     final List<String> managedTopics = new LinkedList<>();
     managedTopics.add(commandTopic);

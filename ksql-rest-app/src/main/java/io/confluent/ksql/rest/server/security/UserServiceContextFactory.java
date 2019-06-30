@@ -50,7 +50,7 @@ public class UserServiceContextFactory {
   public ServiceContext create(final Principal principal) {
     return securityExtension.getUserClientContext(principal)
         .map(clientContext ->
-            create(clientContext))
+            createUserService(clientContext))
         .orElse(
             createDefault());
   }
@@ -59,7 +59,7 @@ public class UserServiceContextFactory {
     return DefaultServiceContext.create(ksqlConfig);
   }
 
-  private ServiceContext create(final KsqlUserClientContext clientContext) {
+  private ServiceContext createUserService(final KsqlUserClientContext clientContext) {
     return DefaultServiceContext.create(
         ksqlConfig,
         clientContext.getKafkaClientSupplier(),
