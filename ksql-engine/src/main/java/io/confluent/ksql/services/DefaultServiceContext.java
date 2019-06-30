@@ -36,7 +36,7 @@ public class DefaultServiceContext implements ServiceContext {
   private final Supplier<SchemaRegistryClient> srClientFactory;
   private final SchemaRegistryClient srClient;
 
-  public static DefaultServiceContext create(final KsqlConfig ksqlConfig) {
+  public static ServiceContext create(final KsqlConfig ksqlConfig) {
     return create(
         ksqlConfig,
         new DefaultKafkaClientSupplier(),
@@ -44,7 +44,7 @@ public class DefaultServiceContext implements ServiceContext {
     );
   }
 
-  public static DefaultServiceContext create(
+  public static ServiceContext create(
       final KsqlConfig ksqlConfig,
       final KafkaClientSupplier kafkaClientSupplier,
       final Supplier<SchemaRegistryClient> srClientFactory

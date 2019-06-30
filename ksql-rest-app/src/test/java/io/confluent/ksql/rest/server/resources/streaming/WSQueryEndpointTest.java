@@ -32,7 +32,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableMap.Builder;
 import com.google.common.util.concurrent.ListeningScheduledExecutorService;
-import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
 import io.confluent.ksql.engine.KsqlEngine;
 import io.confluent.ksql.engine.TopicAccessValidator;
 import io.confluent.ksql.json.JsonMapper;
@@ -48,10 +47,9 @@ import io.confluent.ksql.rest.server.StatementParser;
 import io.confluent.ksql.rest.server.computation.CommandQueue;
 import io.confluent.ksql.rest.server.resources.streaming.WSQueryEndpoint.PrintTopicPublisher;
 import io.confluent.ksql.rest.server.resources.streaming.WSQueryEndpoint.QueryPublisher;
-import io.confluent.ksql.rest.server.resources.streaming.WSQueryEndpoint.ServiceContextFactory;
 import io.confluent.ksql.rest.server.security.KsqlAuthorizationProvider;
 import io.confluent.ksql.rest.server.security.KsqlSecurityExtension;
-import io.confluent.ksql.rest.server.security.KsqlUserClientContext;
+import io.confluent.ksql.rest.server.security.UserServiceContextFactory;
 import io.confluent.ksql.rest.server.state.ServerState;
 import io.confluent.ksql.services.KafkaTopicClient;
 import io.confluent.ksql.services.ServiceContext;
@@ -68,14 +66,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import javax.websocket.CloseReason;
 import javax.websocket.CloseReason.CloseCodes;
 import javax.websocket.Session;
 import javax.ws.rs.core.Response;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.streams.KafkaClientSupplier;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -111,10 +107,6 @@ public class WSQueryEndpointTest {
   @Mock
   private KsqlEngine ksqlEngine;
   @Mock
-  private Supplier<SchemaRegistryClient> schemaRegistryClientSupplier;
-  @Mock
-  private KafkaClientSupplier topicClientSupplier;
-  @Mock
   private KafkaTopicClient topicClient;
   @Mock
   private Principal principal;
@@ -141,11 +133,9 @@ public class WSQueryEndpointTest {
   @Mock
   private ServiceContext serviceContext;
   @Mock
-  private ServiceContextFactory serviceContextFactory;
+  private UserServiceContextFactory serviceContextFactory;
   @Mock
   private ServerState serverState;
-  @Mock
-  private KsqlUserClientContext userContext;
   @Captor
   private ArgumentCaptor<CloseReason> closeReasonCaptor;
   private Query query;
@@ -161,13 +151,9 @@ public class WSQueryEndpointTest {
     when(session.getUserPrincipal()).thenReturn(principal);
     when(statementParser.parseSingleStatement(anyString()))
         .thenAnswer(invocation -> PreparedStatement.of(invocation.getArgument(0).toString(), query));
-    when(securityExtension.getUserClientContext(principal)).thenReturn(Optional.of(userContext));
-    when(userContext.getSchemaRegistryClientSupplier()).thenReturn(schemaRegistryClientSupplier);
-    when(userContext.getKafkaClientSupplier()).thenReturn(topicClientSupplier);
     when(securityExtension.getAuthorizationProvider())
         .thenReturn(Optional.of(authorizationProvider));
-    when(serviceContextFactory.create(ksqlConfig, topicClientSupplier, schemaRegistryClientSupplier))
-        .thenReturn(serviceContext);
+    when(serviceContextFactory.create(any())).thenReturn(serviceContext);
     when(serviceContext.getTopicClient()).thenReturn(topicClient);
     when(serverState.checkReady()).thenReturn(Optional.empty());
     givenRequest(VALID_REQUEST);
@@ -390,10 +376,7 @@ public class WSQueryEndpointTest {
     wsQueryEndpoint.onOpen(session, null);
 
     // Then:
-    verify(securityExtension).getUserClientContext(eq(principal));
-    verify(userContext).getKafkaClientSupplier();
-    verify(userContext).getSchemaRegistryClientSupplier();
-    verify(serviceContextFactory).create(ksqlConfig, topicClientSupplier, schemaRegistryClientSupplier);
+    verify(serviceContextFactory).create(eq(principal));
   }
 
   @Test

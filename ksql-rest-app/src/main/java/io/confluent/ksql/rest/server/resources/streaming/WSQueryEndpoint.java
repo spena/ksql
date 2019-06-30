@@ -16,10 +16,8 @@
 package io.confluent.ksql.rest.server.resources.streaming;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.Iterables;
 import com.google.common.util.concurrent.ListeningScheduledExecutorService;
-import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
 import io.confluent.ksql.engine.KsqlEngine;
 import io.confluent.ksql.engine.TopicAccessValidator;
 import io.confluent.ksql.parser.KsqlParser.PreparedStatement;
@@ -33,10 +31,9 @@ import io.confluent.ksql.rest.entity.Versions;
 import io.confluent.ksql.rest.server.StatementParser;
 import io.confluent.ksql.rest.server.computation.CommandQueue;
 import io.confluent.ksql.rest.server.security.KsqlSecurityExtension;
-import io.confluent.ksql.rest.server.security.KsqlUserClientContext;
+import io.confluent.ksql.rest.server.security.UserServiceContextFactory;
 import io.confluent.ksql.rest.server.state.ServerState;
 import io.confluent.ksql.rest.util.CommandStoreUtil;
-import io.confluent.ksql.services.DefaultServiceContext;
 import io.confluent.ksql.services.ServiceContext;
 import io.confluent.ksql.statement.ConfiguredStatement;
 import io.confluent.ksql.util.HandlerMaps;
@@ -52,7 +49,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Supplier;
 import javax.websocket.CloseReason;
 import javax.websocket.CloseReason.CloseCodes;
 import javax.websocket.EndpointConfig;
@@ -62,7 +58,6 @@ import javax.websocket.OnOpen;
 import javax.websocket.Session;
 import javax.websocket.server.ServerEndpoint;
 import javax.ws.rs.core.Response;
-import org.apache.kafka.streams.KafkaClientSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -93,21 +88,11 @@ public class WSQueryEndpoint {
   private final Duration commandQueueCatchupTimeout;
   private final TopicAccessValidator topicAccessValidator;
   private final KsqlSecurityExtension securityExtension;
-  private final ServiceContextFactory serviceContextFactory;
+  private final UserServiceContextFactory serviceContextFactory;
   private final ServerState serverState;
 
   private WebSocketSubscriber<?> subscriber;
   private ServiceContext serviceContext;
-
-  @VisibleForTesting
-  @FunctionalInterface
-  interface ServiceContextFactory {
-    ServiceContext create(
-        KsqlConfig ksqlConfig,
-        KafkaClientSupplier kafkaClientSupplier,
-        Supplier<SchemaRegistryClient> srClientFactory
-    );
-  }
 
   // CHECKSTYLE_RULES.OFF: ParameterNumberCheck
   public WSQueryEndpoint(
@@ -136,7 +121,7 @@ public class WSQueryEndpoint {
         commandQueueCatchupTimeout,
         topicAccessValidator,
         securityExtension,
-        DefaultServiceContext::create,
+        new UserServiceContextFactory(ksqlConfig, securityExtension),
         serverState);
   }
 
@@ -155,7 +140,7 @@ public class WSQueryEndpoint {
       final Duration commandQueueCatchupTimeout,
       final TopicAccessValidator topicAccessValidator,
       final KsqlSecurityExtension securityExtension,
-      final ServiceContextFactory serviceContextFactory,
+      final UserServiceContextFactory serviceContextFactory,
       final ServerState serverState
   ) {
     this.ksqlConfig = Objects.requireNonNull(ksqlConfig, "ksqlConfig");
@@ -216,7 +201,7 @@ public class WSQueryEndpoint {
 
       final PreparedStatement<?> preparedStatement = parseStatement(request);
 
-      serviceContext = createUserServiceContext(session.getUserPrincipal());
+      serviceContext = serviceContextFactory.create(session.getUserPrincipal());
 
       topicAccessValidator.validate(
           serviceContext,
@@ -234,21 +219,6 @@ public class WSQueryEndpoint {
       log.debug("Error processing request", e);
       SessionUtil.closeSilently(session, CloseCodes.CANNOT_ACCEPT, e.getMessage());
     }
-  }
-
-  private ServiceContext createUserServiceContext(final Principal principal) {
-    // Creates a ServiceContext using the user's credentials, so the WS query topics are
-    // accessed with the user permission context (defaults to KSQL permission context)
-
-    final Optional<KsqlUserClientContext> userContext = securityExtension.getUserClientContext(principal);
-    if (!userContext.isPresent()) {
-      return DefaultServiceContext.create(ksqlConfig);
-    }
-
-    return userContext.map(ctx -> serviceContextFactory.create(
-        ksqlConfig,
-        ctx.getKafkaClientSupplier(),
-        ctx.getSchemaRegistryClientSupplier())).get();
   }
 
   @OnClose
