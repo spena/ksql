@@ -142,10 +142,8 @@ public class KsqlResource {
       @Context final SecurityContext securityContext,
       final ClusterTerminateRequest request
   ) {
-    final ServiceContext serviceContext = createUserServiceContext(securityContext);
-
     ensureValidPatterns(request.getDeleteTopicList());
-    try {
+    try (ServiceContext serviceContext = createUserServiceContext(securityContext)) {
       return Response.ok(
           handler.execute(serviceContext, TERMINATE_CLUSTER, request.getStreamsProperties())
       ).build();
@@ -160,11 +158,9 @@ public class KsqlResource {
       @Context final SecurityContext securityContext,
       final KsqlRequest request
   ) {
-    final ServiceContext serviceContext = createUserServiceContext(securityContext);
-
     activenessRegistrar.updateLastRequestTime();
 
-    try {
+    try (ServiceContext serviceContext = createUserServiceContext(securityContext)) {
       CommandStoreUtil.httpWaitForCommandSequenceNumber(
           commandQueue,
           request,

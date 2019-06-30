@@ -103,8 +103,6 @@ public class StreamedQueryResource {
       @Context final SecurityContext securityContext,
       final KsqlRequest request
   ) throws Exception {
-    final ServiceContext serviceContext = createUserServiceContext(securityContext);
-
     activenessRegistrar.updateLastRequestTime();
 
     final PreparedStatement<?> statement = parseStatement(request);
@@ -112,7 +110,9 @@ public class StreamedQueryResource {
     CommandStoreUtil.httpWaitForCommandSequenceNumber(
         commandQueue, request, commandQueueCatchupTimeout);
 
-    return handleStatement(serviceContext, request, statement);
+    try (ServiceContext serviceContext = createUserServiceContext(securityContext)) {
+      return handleStatement(serviceContext, request, statement);
+    }
   }
 
   private PreparedStatement<?> parseStatement(final KsqlRequest request) {

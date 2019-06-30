@@ -190,6 +190,36 @@ public class TestKsqlRestApp extends ExternalResource {
     return serviceContext.get();
   }
 
+  private UserServiceContextFactory mockUserServiceContextFactory() {
+    final UserServiceContextFactory serviceContextFactory
+        = niceMock(UserServiceContextFactory.class);
+
+    final ServiceContext mockServiceContext
+        = niceMock(ServiceContext.class);
+
+    // A new ServiceContext is created and closed for every REST request. The following mock
+    // behavior avoids that the ServiceContext used for testing is closed afterwards. This ensures
+    // that only one ServiceContext is used on every REST request.
+
+    final ServiceContext serviceContextInTest = getServiceContext();
+
+    expect(mockServiceContext.getAdminClient())
+        .andReturn(serviceContextInTest.getAdminClient()).anyTimes();
+    expect(mockServiceContext.getKafkaClientSupplier())
+        .andReturn(serviceContextInTest.getKafkaClientSupplier()).anyTimes();
+    expect(mockServiceContext.getTopicClient())
+        .andReturn(serviceContextInTest.getTopicClient()).anyTimes();
+    expect(mockServiceContext.getSchemaRegistryClientFactory())
+        .andReturn(serviceContextInTest.getSchemaRegistryClientFactory()).anyTimes();
+    expect(mockServiceContext.getSchemaRegistryClient())
+        .andReturn(serviceContextInTest.getSchemaRegistryClient()).anyTimes();
+
+    expect(serviceContextFactory.create(anyObject())).andReturn(mockServiceContext).anyTimes();
+    replay(serviceContextFactory, mockServiceContext);
+
+    return serviceContextFactory;
+  }
+
   @Override
   protected void before() {
     if (restServer != null) {
@@ -197,18 +227,14 @@ public class TestKsqlRestApp extends ExternalResource {
     }
 
     try {
-      final UserServiceContextFactory serviceContextFactory
-          = niceMock(UserServiceContextFactory.class);
 
-      expect(serviceContextFactory.create(anyObject())).andReturn(getServiceContext()).anyTimes();
-      replay(serviceContextFactory);
 
       restServer = KsqlRestApplication.buildApplication(
           buildConfig(bootstrapServers, baseConfig),
           (booleanSupplier) -> niceMock(VersionCheckerAgent.class),
           3,
           serviceContext.get(),
-          (config, extension) -> serviceContextFactory
+          (config, extension) -> mockUserServiceContextFactory()
       );
     } catch (final Exception e) {
       throw new RuntimeException("Failed to initialise", e);
