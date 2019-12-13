@@ -41,7 +41,7 @@ public final class KsqlAuthorizationValidatorFactory {
     final String enabled = ksqlConfig.getString(KsqlConfig.KSQL_ENABLE_TOPIC_ACCESS_VALIDATOR);
     if (enabled.equals(KsqlConfig.KSQL_ACCESS_VALIDATOR_ON)) {
       LOG.info("Forcing topic access validator");
-      return Optional.of(new KsqlAuthorizationValidatorImpl());
+      return Optional.of(new KsqlAuthorizationValidatorImpl(ksqlConfig));
     } else if (enabled.equals(KsqlConfig.KSQL_ACCESS_VALIDATOR_OFF)) {
       return Optional.empty();
     }
@@ -51,7 +51,7 @@ public final class KsqlAuthorizationValidatorFactory {
     if (isKafkaAuthorizerEnabled(adminClient)) {
       if (KafkaClusterUtil.isAuthorizedOperationsSupported(adminClient)) {
         LOG.info("KSQL topic authorization checks enabled.");
-        return Optional.of(new KsqlAuthorizationValidatorImpl());
+        return Optional.of(new KsqlAuthorizationValidatorImpl(ksqlConfig));
       }
 
       LOG.warn("The Kafka broker has an authorization service enabled, but the Kafka "

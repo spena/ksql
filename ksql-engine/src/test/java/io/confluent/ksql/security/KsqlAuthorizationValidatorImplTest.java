@@ -42,6 +42,8 @@ import io.confluent.ksql.services.ServiceContext;
 import java.util.Collections;
 import java.util.Optional;
 import java.util.Set;
+
+import io.confluent.ksql.util.KsqlConfig;
 import org.apache.kafka.clients.admin.TopicDescription;
 import org.apache.kafka.common.acl.AclOperation;
 import org.junit.After;
@@ -83,10 +85,12 @@ public class KsqlAuthorizationValidatorImplTest {
 
   @Before
   public void setUp() {
+    KsqlConfig ksqlConfig = new KsqlConfig(Collections.emptyMap());
+
     metaStore = new MetaStoreImpl(new InternalFunctionRegistry());
     ksqlEngine = KsqlEngineTestUtil.createKsqlEngine(serviceContext, metaStore);
 
-    authorizationValidator = new KsqlAuthorizationValidatorImpl();
+    authorizationValidator = new KsqlAuthorizationValidatorImpl(ksqlConfig);
     when(serviceContext.getTopicClient()).thenReturn(kafkaTopicClient);
 
     givenTopic(TOPIC_NAME_1, TOPIC_1);

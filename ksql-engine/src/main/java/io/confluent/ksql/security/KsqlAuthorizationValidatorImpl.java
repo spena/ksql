@@ -15,6 +15,9 @@
 
 package io.confluent.ksql.security;
 
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import io.confluent.ksql.exception.KsqlTopicAuthorizationException;
 import io.confluent.ksql.metastore.MetaStore;
 import io.confluent.ksql.metastore.model.DataSource;
@@ -27,9 +30,14 @@ import io.confluent.ksql.parser.tree.Query;
 import io.confluent.ksql.parser.tree.Statement;
 import io.confluent.ksql.services.ServiceContext;
 import io.confluent.ksql.topic.SourceTopicsExtractor;
+import io.confluent.ksql.util.KsqlConfig;
 import io.confluent.ksql.util.KsqlException;
+
 import java.util.Collections;
+import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
 import org.apache.kafka.common.acl.AclOperation;
 
 /**
@@ -39,6 +47,58 @@ import org.apache.kafka.common.acl.AclOperation;
  * This validator only works on Kakfa 2.3 or later.
  */
 public class KsqlAuthorizationValidatorImpl implements KsqlAuthorizationValidator {
+  private static final String UNKNOWN_USER = "";
+
+  private static final boolean ACCESS_ALLOWED = true;
+  private static final boolean ACCESS_DENIED = false;
+
+  private final LoadingCache<CacheKey, Boolean> cache;
+
+  private static class CacheKey {
+    private final ServiceContext serviceContext;
+    private final String topicName;
+    private final AclOperation operation;
+
+    CacheKey(ServiceContext serviceContext, String topicName, AclOperation operation) {
+      this.serviceContext = serviceContext;
+      this.topicName = topicName;
+      this.operation = operation;
+    }
+
+    public ServiceContext getServiceContext() {
+      return serviceContext;
+    }
+
+    public String getTopicName() {
+      return topicName;
+    }
+
+    public AclOperation getOperation() {
+      return operation;
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(
+          serviceContext.getUserName().orElse(UNKNOWN_USER),
+          topicName,
+          operation.code()
+      );
+    }
+  }
+
+
+  public KsqlAuthorizationValidatorImpl(final KsqlConfig ksqlConfig) {
+    long expirationTime = ksqlConfig.getInt(KsqlConfig.KSQL_AUTH_CACHE_EXPIRE_TIME_IN_SECS);
+    long maxEntries = ksqlConfig.getInt(KsqlConfig.KSQL_AUTH_CACHE_MAX_ENTRIES);
+
+    // initialize cache
+    cache = CacheBuilder.newBuilder()
+        .expireAfterWrite(expirationTime, TimeUnit.SECONDS)
+        .maximumSize(maxEntries)
+        .build(buildCacheLoader());
+  }
+
   @Override
   public void checkAuthorization(
       final ServiceContext serviceContext,
@@ -66,7 +126,7 @@ public class KsqlAuthorizationValidatorImpl implements KsqlAuthorizationValidato
     final SourceTopicsExtractor extractor = new SourceTopicsExtractor(metaStore);
     extractor.process(query, null);
     for (String kafkaTopic : extractor.getSourceTopics()) {
-      checkAccess(serviceContext, kafkaTopic, AclOperation.READ);
+      checkCacheAccess(serviceContext, kafkaTopic, AclOperation.READ);
     }
   }
 
@@ -88,7 +148,7 @@ public class KsqlAuthorizationValidatorImpl implements KsqlAuthorizationValidato
 
     // At this point, the topic should have been created by the TopicCreateInjector
     final String kafkaTopic = getCreateAsSelectSinkTopic(metaStore, createAsSelect);
-    checkAccess(serviceContext, kafkaTopic, AclOperation.WRITE);
+    checkCacheAccess(serviceContext, kafkaTopic, AclOperation.WRITE);
   }
 
   private void validateInsertInto(
@@ -105,14 +165,14 @@ public class KsqlAuthorizationValidatorImpl implements KsqlAuthorizationValidato
     validateQuery(serviceContext, metaStore, insertInto.getQuery());
 
     final String kafkaTopic = getSourceTopicName(metaStore, insertInto.getTarget());
-    checkAccess(serviceContext, kafkaTopic, AclOperation.WRITE);
+    checkCacheAccess(serviceContext, kafkaTopic, AclOperation.WRITE);
   }
 
   private void validatePrintTopic(
           final ServiceContext serviceContext,
           final PrintTopic printTopic
   ) {
-    checkAccess(serviceContext, printTopic.getTopic(), AclOperation.READ);
+    checkCacheAccess(serviceContext, printTopic.getTopic(), AclOperation.READ);
   }
 
   private void validateCreateSource(
@@ -120,7 +180,7 @@ public class KsqlAuthorizationValidatorImpl implements KsqlAuthorizationValidato
       final CreateSource createSource
   ) {
     final String sourceTopic = createSource.getProperties().getKafkaTopic();
-    checkAccess(serviceContext, sourceTopic, AclOperation.READ);
+    checkCacheAccess(serviceContext, sourceTopic, AclOperation.READ);
   }
 
   private String getSourceTopicName(final MetaStore metaStore, final SourceName streamOrTable) {
@@ -133,20 +193,39 @@ public class KsqlAuthorizationValidatorImpl implements KsqlAuthorizationValidato
     return dataSource.getKafkaTopicName();
   }
 
-  /**
-   * Checks if the ServiceContext has access to the topic with the specified AclOperation.
-   */
-  private void checkAccess(
+  private CacheLoader<CacheKey, Boolean> buildCacheLoader() {
+    return new CacheLoader<CacheKey, Boolean>() {
+      @Override
+      public Boolean load(CacheKey key) {
+        final ServiceContext serviceContext = key.getServiceContext();
+        final String topicName = key.getTopicName();
+        final AclOperation operation = key.getOperation();
+
+        try {
+          final Set<AclOperation> authorizedOperations = serviceContext.getTopicClient()
+              .describeTopic(topicName).authorizedOperations();
+
+          // Kakfa 2.2 or lower do not support authorizedOperations(). In case of running on a
+          // unsupported broker version, then the authorizeOperation will be null.
+          if (authorizedOperations != null && !authorizedOperations.contains(operation)) {
+            return ACCESS_DENIED;
+          }
+        } catch (Exception e) {
+          return ACCESS_DENIED;
+        }
+
+        return ACCESS_ALLOWED;
+      }
+    };
+  }
+
+  private void checkCacheAccess(
       final ServiceContext serviceContext,
       final String topicName,
       final AclOperation operation
   ) {
-    final Set<AclOperation> authorizedOperations = serviceContext.getTopicClient()
-        .describeTopic(topicName).authorizedOperations();
-
-    // Kakfa 2.2 or lower do not support authorizedOperations(). In case of running on a
-    // unsupported broker version, then the authorizeOperation will be null.
-    if (authorizedOperations != null && !authorizedOperations.contains(operation)) {
+    CacheKey cacheKey = new CacheKey(serviceContext, topicName, operation);
+    if (cache.getUnchecked(cacheKey) == ACCESS_DENIED) {
       // This error message is similar to what Kafka throws when it cannot access the topic
       // due to an authorization error. I used this message to keep a consistent message.
       throw new KsqlTopicAuthorizationException(operation, Collections.singleton(topicName));
