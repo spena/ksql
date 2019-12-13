@@ -183,20 +183,12 @@ public class StreamedQueryResource implements KsqlConfigurable {
               statement.getStatement()
           );
 
+      authorizationValidator.ifPresent(authValidationConsumer);
+
       if (statement.getStatement() instanceof Query) {
         final PreparedStatement<Query> queryStmt = (PreparedStatement<Query>) statement;
 
         if (queryStmt.getStatement().isPullQuery()) {
-          final boolean skipAccessValidation = ksqlConfig.getBoolean(
-              KsqlConfig.KSQL_PULL_QUERIES_SKIP_ACCESS_VALIDATOR_CONFIG);
-          if (authorizationValidator.isPresent() && !skipAccessValidation) {
-            return Errors.badRequest("Pull queries are not currently supported when "
-                + "access validation against Kafka is configured. If you really want to "
-                + "bypass this limitation please set "
-                + KsqlConfig.KSQL_PULL_QUERIES_SKIP_ACCESS_VALIDATOR_CONFIG + "=true "
-                + KsqlConfig.KSQL_PULL_QUERIES_SKIP_ACCESS_VALIDATOR_DOC);
-          }
-
           return handlePullQuery(
               serviceContext,
               queryStmt,
@@ -204,7 +196,6 @@ public class StreamedQueryResource implements KsqlConfigurable {
           );
         }
 
-        authorizationValidator.ifPresent(authValidationConsumer);
         return handlePushQuery(
             serviceContext,
             queryStmt,
@@ -213,7 +204,6 @@ public class StreamedQueryResource implements KsqlConfigurable {
       }
 
       if (statement.getStatement() instanceof PrintTopic) {
-        authorizationValidator.ifPresent(authValidationConsumer);
         return handlePrintTopic(
             serviceContext,
             request.getStreamsProperties(),
