@@ -18,6 +18,7 @@ package io.confluent.ksql.services;
 import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
 import io.confluent.ksql.util.Sandbox;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Supplier;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.streams.KafkaClientSupplier;
@@ -64,6 +65,11 @@ public final class SandboxedServiceContext implements ServiceContext {
     this.topicClient = Objects.requireNonNull(topicClient, "topicClient");
     this.srClient = Objects.requireNonNull(srClient, "srClient");
     this.connectClient = Objects.requireNonNull(connectClient, "connectClient");
+  }
+
+  @Override
+  public Optional<String> getUserName() {
+    return Optional.empty();
   }
 
   @Override

@@ -84,17 +84,23 @@ public class KsqlRestServiceContextFactory implements Factory<ServiceContext> {
 
   @Override
   public ServiceContext provide() {
+    final Principal principal = securityContext.getUserPrincipal();
+
     final Optional<String> authHeader =
         Optional.ofNullable(request.getHeader(HttpHeaders.AUTHORIZATION));
 
+    final Optional<String> userName = (principal != null)
+        ? Optional.of(principal.getName()) : Optional.empty();
+
     if (!securityExtension.getUserContextProvider().isPresent()) {
-      return defaultServiceContextFactory.create(ksqlConfig, authHeader);
+      return defaultServiceContextFactory.create(userName, ksqlConfig, authHeader);
     }
 
-    final Principal principal = securityContext.getUserPrincipal();
+
     return securityExtension.getUserContextProvider()
         .map(provider ->
             userServiceContextFactory.create(
+                userName,
                 ksqlConfig,
                 authHeader,
                 provider.getKafkaClientSupplier(principal),

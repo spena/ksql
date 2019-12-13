@@ -274,13 +274,17 @@ public class WSQueryEndpoint {
     // Creates a ServiceContext using the user's credentials, so the WS query topics are
     // accessed with the user permission context (defaults to KSQL service context)
 
+    Optional<String> userName = (principal != null)
+        ? Optional.of(principal.getName()) : Optional.empty();
+
     if (!securityExtension.getUserContextProvider().isPresent()) {
-      return defaultServiceContextFactory.create(ksqlConfig, Optional.empty());
+      return defaultServiceContextFactory.create(userName, ksqlConfig, Optional.empty());
     }
 
     return securityExtension.getUserContextProvider()
         .map(provider ->
             serviceContextFactory.create(
+                userName,
                 ksqlConfig,
                 Optional.empty(),
                 provider.getKafkaClientSupplier(principal),

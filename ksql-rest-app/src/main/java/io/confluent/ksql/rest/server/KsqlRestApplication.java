@@ -421,7 +421,7 @@ public final class KsqlRestApplication extends ExecutableApplication<KsqlRestCon
   ) {
     final KsqlConfig ksqlConfig = new KsqlConfig(restConfig.getKsqlConfigProperties());
     final ServiceContext serviceContext = new LazyServiceContext(() ->
-        RestServiceContextFactory.create(ksqlConfig, Optional.empty()));
+        RestServiceContextFactory.create(Optional.empty(), ksqlConfig, Optional.empty()));
 
     return buildApplication(
         "",

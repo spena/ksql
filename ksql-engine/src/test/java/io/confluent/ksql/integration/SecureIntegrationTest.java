@@ -62,6 +62,7 @@ import io.confluent.ksql.util.TopicProducer;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -266,7 +267,8 @@ public class SecureIntegrationTest {
 
   private void givenTestSetupWithConfig(final Map<String, Object> ksqlConfigs) {
     ksqlConfig = new KsqlConfig(ksqlConfigs);
-    serviceContext = ServiceContextFactory.create(ksqlConfig, DisabledKsqlClient::instance);
+    serviceContext = ServiceContextFactory.create(Optional.empty(), ksqlConfig,
+        DisabledKsqlClient::instance);
     ksqlEngine = new KsqlEngine(
         serviceContext,
         ProcessingLogContext.create(),

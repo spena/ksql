@@ -535,6 +535,7 @@ public class TestExecutor implements Closeable {
     final SchemaRegistryClient schemaRegistryClient = new MockSchemaRegistryClient();
 
     return new DefaultServiceContext(
+        Optional.empty(),
         new StubKafkaClientSupplier(),
         () -> new StubKafkaClientSupplier().getAdmin(Collections.emptyMap()),
         new StubKafkaTopicClient(),

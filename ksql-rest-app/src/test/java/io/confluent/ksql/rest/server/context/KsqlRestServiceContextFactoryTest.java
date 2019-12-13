@@ -75,8 +75,8 @@ public class KsqlRestServiceContextFactoryTest {
     );
 
     when(securityContext.getUserPrincipal()).thenReturn(user1);
-    when(defaultServiceContextProvider.create(any(), any())).thenReturn(defaultServiceContext);
-    when(userServiceContextFactory.create(any(), any(), any(), any()))
+    when(defaultServiceContextProvider.create(any(), any(), any())).thenReturn(defaultServiceContext);
+    when(userServiceContextFactory.create(any(), any(), any(), any(), any()))
         .thenReturn(userServiceContext);
   }
 
@@ -89,7 +89,7 @@ public class KsqlRestServiceContextFactoryTest {
     final ServiceContext serviceContext = serviceContextFactory.provide();
 
     // Then:
-    verify(defaultServiceContextProvider).create(ksqlConfig, Optional.empty());
+    verify(defaultServiceContextProvider).create(Optional.empty(), ksqlConfig, Optional.empty());
     assertThat(serviceContext, is(defaultServiceContext));
   }
 
@@ -102,7 +102,8 @@ public class KsqlRestServiceContextFactoryTest {
     final ServiceContext serviceContext = serviceContextFactory.provide();
 
     // Then:
-    verify(userServiceContextFactory).create(eq(ksqlConfig), eq(Optional.empty()), any(), any());
+    verify(userServiceContextFactory).create(eq(Optional.empty()), eq(ksqlConfig),
+        eq(Optional.empty()), any(), any());
     assertThat(serviceContext, is(userServiceContext));
   }
 
@@ -116,7 +117,7 @@ public class KsqlRestServiceContextFactoryTest {
     serviceContextFactory.provide();
 
     // Then:
-    verify(defaultServiceContextProvider).create(any(), eq(Optional.of("some-auth")));
+    verify(defaultServiceContextProvider).create(any(), any(), eq(Optional.of("some-auth")));
   }
 
   @Test
@@ -129,6 +130,7 @@ public class KsqlRestServiceContextFactoryTest {
     serviceContextFactory.provide();
 
     // Then:
-    verify(userServiceContextFactory).create(any(), eq(Optional.of("some-auth")), any(), any());
+    verify(userServiceContextFactory).create(any(), any(), eq(Optional.of("some-auth")),
+        any(), any());
   }
 }

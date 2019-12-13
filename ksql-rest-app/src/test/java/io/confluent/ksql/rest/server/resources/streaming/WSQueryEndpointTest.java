@@ -173,8 +173,8 @@ public class WSQueryEndpointTest {
         .thenReturn(topicClientSupplier);
     when(securityExtension.getAuthorizationProvider())
         .thenReturn(Optional.of(authorizationProvider));
-    when(serviceContextFactory.create(any(), any(), any(), any())).thenReturn(serviceContext);
-    when(defaultServiceContextProvider.create(any(), any())).thenReturn(serviceContext);
+    when(serviceContextFactory.create(any(), any(), any(), any(), any())).thenReturn(serviceContext);
+    when(defaultServiceContextProvider.create(any(), any(), any())).thenReturn(serviceContext);
     when(serviceContext.getTopicClient()).thenReturn(topicClient);
     when(serverState.checkReady()).thenReturn(Optional.empty());
     givenRequest(VALID_REQUEST);
@@ -453,7 +453,7 @@ public class WSQueryEndpointTest {
     wsQueryEndpoint.onOpen(session, null);
 
     // Then:
-    verify(defaultServiceContextProvider).create(ksqlConfig, Optional.empty());
+    verify(defaultServiceContextProvider).create(Optional.empty(), ksqlConfig, Optional.empty());
     verifyZeroInteractions(userContextProvider);
   }
 
@@ -469,6 +469,7 @@ public class WSQueryEndpointTest {
     verify(userContextProvider).getKafkaClientSupplier(eq(principal));
     verify(userContextProvider).getSchemaRegistryClientFactory(eq(principal));
     verify(serviceContextFactory).create(
+        Optional.empty(),
         ksqlConfig,
         Optional.empty(),
         topicClientSupplier,

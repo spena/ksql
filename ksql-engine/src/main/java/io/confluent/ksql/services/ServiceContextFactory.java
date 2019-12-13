@@ -29,10 +29,12 @@ public final class ServiceContextFactory {
   private ServiceContextFactory() { }
 
   public static ServiceContext create(
+      final Optional<String> userName,
       final KsqlConfig ksqlConfig,
       final Supplier<SimpleKsqlClient> ksqlClientSupplier
   ) {
     return create(
+        userName,
         ksqlConfig,
         new DefaultKafkaClientSupplier(),
         new KsqlSchemaRegistryClientFactory(ksqlConfig, Collections.emptyMap())::get,
@@ -43,6 +45,7 @@ public final class ServiceContextFactory {
   }
 
   public static ServiceContext create(
+      final Optional<String> userName,
       final KsqlConfig ksqlConfig,
       final KafkaClientSupplier kafkaClientSupplier,
       final Supplier<SchemaRegistryClient> srClientFactory,
@@ -51,6 +54,7 @@ public final class ServiceContextFactory {
   ) {
 
     return new DefaultServiceContext(
+        userName,
         kafkaClientSupplier,
         () -> kafkaClientSupplier
             .getAdmin(ksqlConfig.getKsqlAdminClientConfigProps()),

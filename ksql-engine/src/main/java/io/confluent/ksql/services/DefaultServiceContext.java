@@ -21,6 +21,8 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Suppliers;
 import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
 import io.confluent.ksql.util.KsqlConfig;
+
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.apache.kafka.clients.admin.Admin;
@@ -31,6 +33,7 @@ import org.apache.kafka.streams.KafkaClientSupplier;
  */
 public class DefaultServiceContext implements ServiceContext {
 
+  private final Optional<String> userName;
   private final KafkaClientSupplier kafkaClientSupplier;
   private final MemoizedSupplier<Admin> adminClientSupplier;
   private final MemoizedSupplier<KafkaTopicClient>  topicClientSupplier;
@@ -40,6 +43,7 @@ public class DefaultServiceContext implements ServiceContext {
   private final MemoizedSupplier<SimpleKsqlClient> ksqlClientSupplier;
 
   public DefaultServiceContext(
+      final Optional<String> userName,
       final KafkaClientSupplier kafkaClientSupplier,
       final Supplier<Admin> adminClientSupplier,
       final Supplier<SchemaRegistryClient> srClientSupplier,
@@ -47,6 +51,7 @@ public class DefaultServiceContext implements ServiceContext {
       final Supplier<SimpleKsqlClient> ksqlClientSupplier
   ) {
     this(
+        userName,
         kafkaClientSupplier,
         adminClientSupplier,
         KafkaTopicClientImpl::new,
@@ -58,6 +63,7 @@ public class DefaultServiceContext implements ServiceContext {
 
   @VisibleForTesting
   public DefaultServiceContext(
+      final Optional<String> userName,
       final KafkaClientSupplier kafkaClientSupplier,
       final Supplier<Admin> adminClientSupplier,
       final KafkaTopicClient topicClient,
@@ -66,6 +72,7 @@ public class DefaultServiceContext implements ServiceContext {
       final Supplier<SimpleKsqlClient> ksqlClientSupplier
   ) {
     this(
+        userName,
         kafkaClientSupplier,
         adminClientSupplier,
         adminSupplier -> topicClient,
@@ -76,6 +83,7 @@ public class DefaultServiceContext implements ServiceContext {
   }
 
   private DefaultServiceContext(
+      final Optional<String> userName,
       final KafkaClientSupplier kafkaClientSupplier,
       final Supplier<Admin> adminClientSupplier,
       final Function<Supplier<Admin>, KafkaTopicClient> topicClientProvider,
@@ -83,6 +91,9 @@ public class DefaultServiceContext implements ServiceContext {
       final Supplier<ConnectClient> connectClientSupplier,
       final Supplier<SimpleKsqlClient> ksqlClientSupplier
   ) {
+    requireNonNull(userName, "userName");
+    this.userName = userName;
+
     requireNonNull(adminClientSupplier, "adminClientSupplier");
     this.adminClientSupplier = new MemoizedSupplier<>(adminClientSupplier);
 
@@ -101,6 +112,11 @@ public class DefaultServiceContext implements ServiceContext {
 
     this.topicClientSupplier = new MemoizedSupplier<>(
         () -> topicClientProvider.apply(this.adminClientSupplier));
+  }
+
+  @Override
+  public Optional<String> getUserName() {
+    return userName;
   }
 
   @Override

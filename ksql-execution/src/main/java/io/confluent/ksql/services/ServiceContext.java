@@ -16,6 +16,8 @@
 package io.confluent.ksql.services;
 
 import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
+
+import java.util.Optional;
 import java.util.function.Supplier;
 import org.apache.kafka.clients.admin.Admin;
 import org.apache.kafka.streams.KafkaClientSupplier;
@@ -24,6 +26,8 @@ import org.apache.kafka.streams.KafkaClientSupplier;
  * Provides access to clients required to communicate with remote services.
  */
 public interface ServiceContext extends AutoCloseable {
+
+  Optional<String> getUserName();
 
   /**
    * Get the shared {@link Admin} instance.

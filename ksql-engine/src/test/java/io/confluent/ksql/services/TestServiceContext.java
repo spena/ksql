@@ -95,6 +95,7 @@ public final class TestServiceContext {
       final ConnectClient connectClient
   ) {
     final DefaultServiceContext serviceContext = new DefaultServiceContext(
+        Optional.empty(),
         kafkaClientSupplier,
         () -> adminClient,
         topicClient,

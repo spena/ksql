@@ -51,6 +51,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import kafka.zookeeper.ZooKeeperClientException;
@@ -95,7 +96,8 @@ public class JsonFormatTest {
     streamName = "STREAM_" + COUNTER.getAndIncrement();
 
     ksqlConfig = KsqlConfigTestUtil.create(CLUSTER);
-    serviceContext = ServiceContextFactory.create(ksqlConfig, DisabledKsqlClient::instance);
+    serviceContext = ServiceContextFactory.create(Optional.empty(), ksqlConfig,
+        DisabledKsqlClient::instance);
 
     ksqlEngine = new KsqlEngine(
         serviceContext,

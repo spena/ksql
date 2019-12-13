@@ -37,6 +37,7 @@ import io.confluent.ksql.util.KsqlConfig;
 import io.confluent.ksql.version.metrics.KsqlVersionCheckerAgent;
 import io.confluent.ksql.version.metrics.VersionCheckerAgent;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -57,7 +58,8 @@ public final class StandaloneExecutorFactory {
         properties,
         queriesFile,
         installDir,
-        config -> ServiceContextFactory.create(config, DisabledKsqlClient::instance),
+        config -> ServiceContextFactory.create(Optional.empty(), config,
+            DisabledKsqlClient::instance),
         KafkaConfigStore::new,
         KsqlVersionCheckerAgent::new,
         StandaloneExecutor::new

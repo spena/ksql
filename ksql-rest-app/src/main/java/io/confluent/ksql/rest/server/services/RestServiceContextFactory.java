@@ -35,6 +35,7 @@ public final class RestServiceContextFactory {
   public interface DefaultServiceContextFactory {
 
     ServiceContext create(
+        Optional<String> userName,
         KsqlConfig config,
         Optional<String> authHeader
     );
@@ -43,6 +44,7 @@ public final class RestServiceContextFactory {
   public interface UserServiceContextFactory {
 
     ServiceContext create(
+        Optional<String> userName,
         KsqlConfig ksqlConfig,
         Optional<String> authHeader,
         KafkaClientSupplier kafkaClientSupplier,
@@ -51,10 +53,12 @@ public final class RestServiceContextFactory {
   }
 
   public static ServiceContext create(
+      final Optional<String> userName,
       final KsqlConfig ksqlConfig,
       final Optional<String> authHeader
   ) {
     return create(
+        userName,
         ksqlConfig,
         authHeader,
         new DefaultKafkaClientSupplier(),
@@ -63,12 +67,14 @@ public final class RestServiceContextFactory {
   }
 
   public static ServiceContext create(
+      final Optional<String> userName,
       final KsqlConfig ksqlConfig,
       final Optional<String> authHeader,
       final KafkaClientSupplier kafkaClientSupplier,
       final Supplier<SchemaRegistryClient> srClientFactory
   ) {
     return ServiceContextFactory.create(
+        userName,
         ksqlConfig,
         kafkaClientSupplier,
         srClientFactory,
