@@ -32,6 +32,7 @@ import io.vertx.core.http.HttpHeaders;
 import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.http.HttpVersion;
 import io.vertx.ext.web.RoutingContext;
+
 import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -40,7 +41,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.function.BiFunction;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 public final class OldApiUtils {
+  private static final Logger log = LoggerFactory.getLogger(OldApiUtils.class);
 
   private OldApiUtils() {
   }
@@ -53,6 +58,7 @@ public final class OldApiUtils {
       final RoutingContext routingContext,
       final Class<T> requestClass,
       final BiFunction<T, ApiSecurityContext, CompletableFuture<EndpointResponse>> requestor) {
+    log.info("ESCALATION-4417: Handling request. Body = " + routingContext.getBodyAsJson());
     final T requestObject;
     if (requestClass != null) {
       final Optional<T> optRequestObject = ServerUtils
@@ -80,6 +86,7 @@ public final class OldApiUtils {
 
   static void handleOldApiResponse(final Server server, final RoutingContext routingContext,
       final EndpointResponse endpointResponse) {
+    log.info("ESCALATION-4417: Handling response. Body = " + routingContext.getBodyAsJson());
     final HttpServerResponse response = routingContext.response();
     response.putHeader(CONTENT_TYPE_HEADER, JSON_CONTENT_TYPE);
 
@@ -119,11 +126,19 @@ public final class OldApiUtils {
       final StreamingOutput streamingOutput) {
     final WorkerExecutor workerExecutor = server.getWorkerExecutor();
     final VertxCompletableFuture<Void> vcf = new VertxCompletableFuture<>();
+    // This is called after the query has started. This code will start streaming data back to
+    // the client
+    log.info("ESCALATION-4417: Executing response on worker.");
     workerExecutor.executeBlocking(promise -> {
+      log.info("ESCALATION-4417: Worked obtained. Handling StreamingOutput in a Worker. Body = "
+          + routingContext.getBodyAsJson());
       final OutputStream ros = new ResponseOutputStream(routingContext.response());
       routingContext.request().connection().closeHandler(v -> {
         // Close the OutputStream on close of the HTTP connection
         try {
+          // Seems this is called when the HTTP connection is closed?
+          log.info("ESCALATION-4417: StreamingOutput handler is closed. Body = "
+              + routingContext.getBodyAsJson());
           ros.close();
         } catch (IOException e) {
           promise.fail(e);
@@ -131,8 +146,12 @@ public final class OldApiUtils {
       });
       try {
         streamingOutput.write(new BufferedOutputStream(ros));
+        log.info("ESCALATION-4417: StreamingOutput write is completed. Body = "
+            + routingContext.getBodyAsJson());
         promise.complete();
       } catch (Exception e) {
+        log.info("ESCALATION-4417: StreamingOutput failed. Body = "
+            + routingContext.getBodyAsJson(), e);
         promise.fail(e);
       } finally {
         try {

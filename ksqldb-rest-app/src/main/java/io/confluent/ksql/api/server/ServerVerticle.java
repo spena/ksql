@@ -223,9 +223,15 @@ public class ServerVerticle extends AbstractVerticle {
   }
 
   private void handleQueryRequest(final RoutingContext routingContext) {
-
+    log.info("ESCALATION-4417: New HTTP request for query streaming received. Body = "
+        + routingContext.getBodyAsJson());
     final CompletableFuture<Void> connectionClosedFuture = new CompletableFuture<>();
-    routingContext.request().connection().closeHandler(v -> connectionClosedFuture.complete(null));
+    routingContext.request().connection().closeHandler(v -> {
+      // When is this closed? I do not see this message logged in normal closing (Ctrl^C)
+      log.info("ESCALATION-4417: Closing HTTP connection for query streaming. Body = "
+          + routingContext.getBodyAsJson());
+      connectionClosedFuture.complete(null);
+    });
 
     handleOldApiRequest(server, routingContext, KsqlRequest.class,
         (request, apiSecurityContext) ->

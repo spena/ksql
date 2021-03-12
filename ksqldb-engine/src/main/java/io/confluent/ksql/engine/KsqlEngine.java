@@ -235,6 +235,7 @@ public class KsqlEngine implements KsqlExecutionContext, Closeable {
 
   @Override
   public void close() {
+    log.info("ESCALATION-4417: All queries are being stopped");
     allLiveQueries.forEach(QueryMetadata::stop);
     engineMetrics.close();
     aggregateMetricsCollector.shutdown();

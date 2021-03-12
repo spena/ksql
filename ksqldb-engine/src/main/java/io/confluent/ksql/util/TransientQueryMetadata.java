@@ -29,11 +29,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import org.apache.kafka.streams.KafkaStreams;
 import org.apache.kafka.streams.Topology;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Metadata of a transient query, e.g. {@code SELECT * FROM FOO;}.
  */
 public class TransientQueryMetadata extends QueryMetadata {
+  private static final Logger log = LoggerFactory.getLogger(TransientQueryMetadata.class);
 
   private final BlockingRowQueue rowQueue;
   private final AtomicBoolean isRunning = new AtomicBoolean(true);
@@ -105,6 +108,7 @@ public class TransientQueryMetadata extends QueryMetadata {
 
   @Override
   public void stop() {
+    log.info("ESCALATION-4417: Stopping queryID: {}", getQueryId());
     close();
   }
 
@@ -112,6 +116,7 @@ public class TransientQueryMetadata extends QueryMetadata {
   protected void doClose(final boolean cleanUp) {
     // To avoid deadlock, close the queue first to ensure producer side isn't blocked trying to
     // write to the blocking queue, otherwise super.close call can deadlock:
+    log.info("ESCALATION-4417: Closing queryID: {}", getQueryId());
     rowQueue.close();
 
     // Now safe to close:

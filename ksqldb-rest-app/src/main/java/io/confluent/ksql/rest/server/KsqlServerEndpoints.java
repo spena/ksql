@@ -57,10 +57,14 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.reactivestreams.Subscriber;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 // CHECKSTYLE_RULES.OFF: ClassDataAbstractionCoupling
 public class KsqlServerEndpoints implements Endpoints {
   // CHECKSTYLE_RULES.ON: ClassDataAbstractionCoupling
+
+  private static final Logger log = LoggerFactory.getLogger(KsqlServerEndpoints.class);
 
   private final KsqlEngine ksqlEngine;
   private final KsqlConfig ksqlConfig;
@@ -265,6 +269,7 @@ public class KsqlServerEndpoints implements Endpoints {
 
   private <R> CompletableFuture<R> executeOnWorker(final Supplier<R> supplier,
       final WorkerExecutor workerExecutor) {
+    log.info("ESCALATION-4417: Executing request on worker.");
     final VertxCompletableFuture<R> vcf = new VertxCompletableFuture<>();
     workerExecutor.executeBlocking(promise -> promise.complete(supplier.get()), false, vcf);
     return vcf;

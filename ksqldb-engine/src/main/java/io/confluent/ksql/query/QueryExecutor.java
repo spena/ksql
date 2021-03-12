@@ -277,7 +277,7 @@ public final class QueryExecutor {
     } else {
       throw new IllegalStateException("Unexpected type built from exection plan");
     }
-    final TransientQueryQueue queue = new TransientQueryQueue(limit);
+    final TransientQueryQueue queue = new TransientQueryQueue(limit, queryId);
     kstream.foreach((k, v) -> queue.acceptRow(v));
     return queue;
   }

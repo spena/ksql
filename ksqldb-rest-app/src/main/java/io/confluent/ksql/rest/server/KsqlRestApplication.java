@@ -134,6 +134,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.kafka.streams.StreamsConfig;
 import org.apache.log4j.LogManager;

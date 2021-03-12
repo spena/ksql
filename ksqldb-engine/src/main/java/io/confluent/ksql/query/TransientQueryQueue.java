@@ -17,16 +17,22 @@ package io.confluent.ksql.query;
 
 import com.google.common.annotations.VisibleForTesting;
 import io.confluent.ksql.GenericRow;
+
 import java.util.Collection;
+import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * A queue of rows for transient queries.
  */
 public class TransientQueryQueue implements BlockingRowQueue {
+  private static final Logger log = LoggerFactory.getLogger(TransientQueryQueue.class);
 
   public static final int BLOCKING_QUEUE_CAPACITY = 500;
 
@@ -35,8 +41,15 @@ public class TransientQueryQueue implements BlockingRowQueue {
   private LimitQueueCallback callback;
   private volatile boolean closed = false;
 
+  private Optional<QueryId> queryId = Optional.empty();
+
   public TransientQueryQueue(final OptionalInt limit) {
     this(limit, BLOCKING_QUEUE_CAPACITY, 100);
+  }
+
+  public TransientQueryQueue(final OptionalInt limit, final QueryId queryId) {
+    this(limit, BLOCKING_QUEUE_CAPACITY, 100);
+    this.queryId = Optional.of(queryId);
   }
 
   @VisibleForTesting
@@ -109,15 +122,21 @@ public class TransientQueryQueue implements BlockingRowQueue {
   @Override
   public void close() {
     closed = true;
+    log.info("ESCALATION-4417: Queue closed for queryID {}",
+        queryId.map(QueryId::toString).orElse("<unknown>"));
   }
 
   public void acceptRow(final GenericRow row) {
     try {
       if (row == null) {
+        log.info("ESCALATION-4417: Null row found. QueryID = {}",
+            queryId.map(QueryId::toString).orElse("<unknown>"));
         return;
       }
 
       if (!callback.shouldQueue()) {
+        log.info("ESCALATION-4417: Row cannot be queued. QueryID = {}",
+            queryId.map(QueryId::toString).orElse("<unknown>"));
         return;
       }
 
@@ -125,11 +144,25 @@ public class TransientQueryQueue implements BlockingRowQueue {
         if (rowQueue.offer(row, offerTimeoutMs, TimeUnit.MILLISECONDS)) {
           callback.onQueued();
           break;
+        } else {
+          log.info("ESCALATION-4417: Row cannot be offered. QueryID = {}",
+              queryId.map(QueryId::toString).orElse("<unknown>"));
         }
       }
+
+      if (closed) {
+        log.info("ESCALATION-4417: Row not accepted because queue is already closed. QueryID = {}",
+            queryId.map(QueryId::toString).orElse("<unknown>"));
+      }
     } catch (final InterruptedException e) {
+      log.info("ESCALATION-4417: acceptRow interrupted. QueryID = "
+          + queryId.map(QueryId::toString).orElse("<unknown>"), e);
       // Forced shutdown?
       Thread.currentThread().interrupt();
+    } catch (final Exception e) {
+      log.info("ESCALATION-4417: acceptRow threw an exception. QueryID = "
+          + queryId.map(QueryId::toString).orElse("<unknown>"), e);
+      throw e;
     }
   }
 }

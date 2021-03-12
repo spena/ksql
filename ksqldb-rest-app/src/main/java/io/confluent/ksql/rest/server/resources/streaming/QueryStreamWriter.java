@@ -61,13 +61,20 @@ class QueryStreamWriter implements StreamingOutput {
     this.queryMetadata = Objects.requireNonNull(queryMetadata, "queryMetadata");
     this.queryMetadata.setLimitHandler(new LimitHandler());
     this.queryMetadata.setUncaughtExceptionHandler(new StreamsExceptionHandler());
-    connectionClosedFuture.thenAccept(v -> connectionClosed = true);
+    connectionClosedFuture.thenAccept(v -> {
+      log.info("ESCALATION-4417: Connection closed from inside QueryStreamWriter");
+      connectionClosed = true;
+    });
     queryMetadata.start();
   }
 
+  @SuppressWarnings({"checkstyle:CyclomaticComplexity"})
   @Override
   public void write(final OutputStream out) {
     try {
+      log.info("ESCALATION-4417: Start writing data to stream writer. QueryID = "
+          + queryMetadata.getQueryId().toString());
+
       out.write("[".getBytes(StandardCharsets.UTF_8));
       write(out, buildHeader());
 
@@ -94,15 +101,33 @@ class QueryStreamWriter implements StreamingOutput {
         out.write("]\n".getBytes(StandardCharsets.UTF_8));
         out.flush();
       }
+
+      if (connectionClosed) {
+        log.info("ESCALATION-4417: Writing cannot continue because connection was "
+            + "closed. QueryID = " + queryMetadata.getQueryId().toString());
+      }
+
+      if (limitReached) {
+        log.info("ESCALATION-4417: Writing cannot continue because limit is reached."
+            + " QueryID = " + queryMetadata.getQueryId().toString());
+      }
+
+      if (!queryMetadata.isRunning()) {
+        log.info("ESCALATION-4417: Writing cannot continue because query is not running."
+            + " QueryID = " + queryMetadata.getQueryId().toString());
+      }
     } catch (final EOFException exception) {
       // The user has terminated the connection; we can stop writing
-      log.warn("Query terminated due to exception:" + exception.toString());
+      log.warn("Query (" + queryMetadata.getQueryId().toString()
+          + ") terminated due to exception: " + exception.toString(), exception);
     } catch (final InterruptedException exception) {
       // The most likely cause of this is the server shutting down. Should just try to close
       // gracefully, without writing any more to the connection stream.
-      log.warn("Interrupted while writing to connection stream");
+      log.warn("Query (" + queryMetadata.getQueryId().toString()
+          + ") interrupted while writing to connection stream: ", exception);
     } catch (final Exception exception) {
-      log.error("Exception occurred while writing to connection stream: ", exception);
+      log.error("Query (" + queryMetadata.getQueryId().toString()
+          + ") error occurred while writing to connection stream: ", exception);
       outputException(out, exception);
     } finally {
       close();
@@ -170,6 +195,8 @@ class QueryStreamWriter implements StreamingOutput {
   private class StreamsExceptionHandler implements Thread.UncaughtExceptionHandler {
     @Override
     public void uncaughtException(final Thread thread, final Throwable exception) {
+      log.warn("ESCALATION-4417: UncaughtException for QueryID "
+          + queryMetadata.getQueryId().toString(), exception);
       streamsException = exception instanceof Exception
           ? (Exception) exception
           : new RuntimeException(exception);

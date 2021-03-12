@@ -100,6 +100,8 @@ public class Server {
     if (!deploymentIds.isEmpty()) {
       throw new IllegalStateException("Already started");
     }
+    log.info("ESCALATION-4417: Creating worker execution with poolSize = {}",
+        config.getInt(KsqlRestConfig.WORKER_POOL_SIZE));
     this.workerExecutor = vertx.createSharedWorkerExecutor("ksql-workers",
         config.getInt(KsqlRestConfig.WORKER_POOL_SIZE));
     configureTlsCertReload(config);
