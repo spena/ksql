@@ -29,5 +29,19 @@ public interface KsqlAccessValidator {
    * @param topicName The topic name to check access.
    * @param operation The {@code AclOperation} to validate against the {@code topicName}.
    */
-  void checkAccess(KsqlSecurityContext securityContext, String topicName, AclOperation operation);
+  void checkTopicAccess(KsqlSecurityContext securityContext,
+                        String topicName,
+                        AclOperation operation);
+
+  /**
+   * Checks if an authenticated user provided by the {@code securityContext} has authorization
+   * to execute the {@code operation} on the Schema Registry {@code subjectName}.
+   *
+   * @param securityContext The context for the authenticated user.
+   * @param subjectName The Schema Registry subject name to check access.
+   * @param operation The {@code AclOperation} to validate against the {@code subjectName}.
+   */
+  void checkSubjectAccess(KsqlSecurityContext securityContext,
+                          String subjectName,
+                          AclOperation operation);
 }

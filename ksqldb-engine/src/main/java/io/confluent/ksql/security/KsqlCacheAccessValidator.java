@@ -20,6 +20,7 @@ import com.google.common.base.Ticker;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
+import io.confluent.ksql.exception.KsqlSchemaAuthorizationException;
 import io.confluent.ksql.exception.KsqlTopicAuthorizationException;
 import io.confluent.ksql.util.KsqlConfig;
 
@@ -37,20 +38,27 @@ import org.apache.kafka.common.acl.AclOperation;
 public class KsqlCacheAccessValidator implements KsqlAccessValidator {
   private static final boolean ALLOW_ACCESS = true;
 
+  enum ResourceType {
+    TOPIC, SUBJECT
+  }
+
   static class CacheKey {
     private static final String UNKNOWN_USER = "";
 
     private final KsqlSecurityContext securityContext;
-    private final String topicName;
+    private final ResourceType resourceType;
+    private final String resourceName;
     private final AclOperation operation;
 
     CacheKey(
         final KsqlSecurityContext securityContext,
-        final String topicName,
+        final ResourceType resourceType,
+        final String resourceName,
         final AclOperation operation
     ) {
       this.securityContext = securityContext;
-      this.topicName = topicName;
+      this.resourceType = resourceType;
+      this.resourceName = resourceName;
       this.operation = operation;
     }
 
@@ -62,7 +70,8 @@ public class KsqlCacheAccessValidator implements KsqlAccessValidator {
 
       final CacheKey other = (CacheKey)o;
       return getUserName(securityContext).equals(getUserName(other.securityContext))
-          && topicName.equals(other.topicName)
+          && resourceType.equals(other.resourceType)
+          && resourceName.equals(other.resourceName)
           && operation.code() == other.operation.code();
     }
 
@@ -70,7 +79,8 @@ public class KsqlCacheAccessValidator implements KsqlAccessValidator {
     public int hashCode() {
       return Objects.hash(
           getUserName(securityContext),
-          topicName,
+          resourceType,
+          resourceName,
           operation.code()
       );
     }
@@ -124,31 +134,75 @@ public class KsqlCacheAccessValidator implements KsqlAccessValidator {
     return new CacheLoader<CacheKey, CacheValue>() {
       @Override
       public CacheValue load(final CacheKey cacheKey) {
-        try {
-          backendValidator.checkAccess(
-              cacheKey.securityContext,
-              cacheKey.topicName,
-              cacheKey.operation
-          );
-        } catch (KsqlTopicAuthorizationException e) {
-          return new CacheValue(!ALLOW_ACCESS, Optional.of(e));
+        switch (cacheKey.resourceType) {
+          case TOPIC:
+            return internalTopicAccessValidator(cacheKey);
+          case SUBJECT:
+            return internalSubjectAccessValidator(cacheKey);
+          default:
+            throw new IllegalStateException("Unknown access validator type: "
+                + cacheKey.resourceType);
         }
-
-        return new CacheValue(ALLOW_ACCESS, Optional.empty());
       }
     };
   }
 
-  @Override
-  public void checkAccess(
-      final KsqlSecurityContext securityContext,
-      final String topicName,
-      final AclOperation operation
-  ) {
-    final CacheKey cacheKey = new CacheKey(securityContext, topicName, operation);
+  private CacheValue internalTopicAccessValidator(final CacheKey cacheKey) {
+    try {
+      backendValidator.checkTopicAccess(
+          cacheKey.securityContext,
+          cacheKey.resourceName,
+          cacheKey.operation
+      );
+    } catch (final KsqlTopicAuthorizationException e) {
+      return new CacheValue(!ALLOW_ACCESS, Optional.of(e));
+    }
+
+    return new CacheValue(ALLOW_ACCESS, Optional.empty());
+  }
+
+  private CacheValue internalSubjectAccessValidator(final CacheKey cacheKey) {
+    try {
+      backendValidator.checkSubjectAccess(
+          cacheKey.securityContext,
+          cacheKey.resourceName,
+          cacheKey.operation
+      );
+    } catch (final KsqlSchemaAuthorizationException e) {
+      return new CacheValue(!ALLOW_ACCESS, Optional.of(e));
+    }
+
+    return new CacheValue(ALLOW_ACCESS, Optional.empty());
+  }
+
+  private void checkAccess(final CacheKey cacheKey) {
     final CacheValue cacheValue = cache.getUnchecked(cacheKey);
     if (!cacheValue.allowAccess) {
       throw cacheValue.denialReason.get();
     }
+  }
+
+  @Override
+  public void checkTopicAccess(
+      final KsqlSecurityContext securityContext,
+      final String topicName,
+      final AclOperation operation
+  ) {
+    checkAccess(new CacheKey(securityContext,
+        ResourceType.TOPIC,
+        topicName,
+        operation));
+  }
+
+  @Override
+  public void checkSubjectAccess(
+      final KsqlSecurityContext securityContext,
+      final String subjectName,
+      final AclOperation operation
+  ) {
+    checkAccess(new CacheKey(securityContext,
+        ResourceType.SUBJECT,
+        subjectName,
+        operation));
   }
 }

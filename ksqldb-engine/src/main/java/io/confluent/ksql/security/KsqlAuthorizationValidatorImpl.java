@@ -15,6 +15,7 @@
 
 package io.confluent.ksql.security;
 
+import io.confluent.ksql.execution.ddl.commands.KsqlTopic;
 import io.confluent.ksql.metastore.MetaStore;
 import io.confluent.ksql.metastore.model.DataSource;
 import io.confluent.ksql.name.SourceName;
@@ -24,8 +25,13 @@ import io.confluent.ksql.parser.tree.InsertInto;
 import io.confluent.ksql.parser.tree.PrintTopic;
 import io.confluent.ksql.parser.tree.Query;
 import io.confluent.ksql.parser.tree.Statement;
+import io.confluent.ksql.serde.FormatFactory;
+import io.confluent.ksql.serde.FormatInfo;
+import io.confluent.ksql.serde.SerdeFeature;
 import io.confluent.ksql.topic.SourceTopicsExtractor;
+import io.confluent.ksql.util.KsqlConstants;
 import io.confluent.ksql.util.KsqlException;
+import java.util.Set;
 import org.apache.kafka.common.acl.AclOperation;
 
 /**
@@ -69,10 +75,13 @@ public class KsqlAuthorizationValidatorImpl implements KsqlAuthorizationValidato
       final MetaStore metaStore,
       final Query query
   ) {
-    final SourceTopicsExtractor extractor = new SourceTopicsExtractor(metaStore);
-    extractor.process(query, null);
-    for (String kafkaTopic : extractor.getSourceTopics()) {
-      accessValidator.checkAccess(securityContext, kafkaTopic, AclOperation.READ);
+    for (KsqlTopic ksqlTopic : extractQueryTopics(query, metaStore)) {
+      accessValidator.checkTopicAccess(
+          securityContext,
+          ksqlTopic.getKafkaTopicName(),
+          AclOperation.READ);
+
+      checkSchemaAccess(securityContext, ksqlTopic, AclOperation.READ);
     }
   }
 
@@ -94,7 +103,7 @@ public class KsqlAuthorizationValidatorImpl implements KsqlAuthorizationValidato
 
     // At this point, the topic should have been created by the TopicCreateInjector
     final String kafkaTopic = getCreateAsSelectSinkTopic(metaStore, createAsSelect);
-    accessValidator.checkAccess(securityContext, kafkaTopic, AclOperation.WRITE);
+    accessValidator.checkTopicAccess(securityContext, kafkaTopic, AclOperation.WRITE);
   }
 
   private void validateInsertInto(
@@ -111,14 +120,17 @@ public class KsqlAuthorizationValidatorImpl implements KsqlAuthorizationValidato
     validateQuery(securityContext, metaStore, insertInto.getQuery());
 
     final String kafkaTopic = getSourceTopicName(metaStore, insertInto.getTarget());
-    accessValidator.checkAccess(securityContext, kafkaTopic, AclOperation.WRITE);
+    accessValidator.checkTopicAccess(securityContext, kafkaTopic, AclOperation.WRITE);
   }
 
   private void validatePrintTopic(
           final KsqlSecurityContext securityContext,
           final PrintTopic printTopic
   ) {
-    accessValidator.checkAccess(securityContext, printTopic.getTopic(), AclOperation.READ);
+    accessValidator.checkTopicAccess(securityContext, printTopic.getTopic(), AclOperation.READ);
+
+    // SchemaRegistry permissions cannot be validated here because the schema is guessed when
+    // printing the topic by obtaining the first row and attempt to find the right schema
   }
 
   private void validateCreateSource(
@@ -126,7 +138,10 @@ public class KsqlAuthorizationValidatorImpl implements KsqlAuthorizationValidato
       final CreateSource createSource
   ) {
     final String sourceTopic = createSource.getProperties().getKafkaTopic();
-    accessValidator.checkAccess(securityContext, sourceTopic, AclOperation.READ);
+    accessValidator.checkTopicAccess(securityContext, sourceTopic, AclOperation.READ);
+
+    // SchemaRegistry permissions are validated when SchemaRegisterInjector is called during CREATE
+    // operations. There's no need to validate the user has READ permissions here.
   }
 
   private String getSourceTopicName(final MetaStore metaStore, final SourceName streamOrTable) {
@@ -145,5 +160,32 @@ public class KsqlAuthorizationValidatorImpl implements KsqlAuthorizationValidato
   ) {
     return createAsSelect.getProperties().getKafkaTopic()
         .orElseGet(() -> getSourceTopicName(metaStore, createAsSelect.getName()));
+  }
+
+  private Set<KsqlTopic> extractQueryTopics(final Query query, final MetaStore metaStore) {
+    final SourceTopicsExtractor extractor = new SourceTopicsExtractor(metaStore);
+    extractor.process(query, null);
+    return extractor.getSourceTopics();
+  }
+
+  private void checkSchemaAccess(
+      final KsqlSecurityContext securityContext,
+      final KsqlTopic ksqlTopic,
+      final AclOperation aclOperation
+  ) {
+
+    if (formatSupportsSchemaInference(ksqlTopic.getKeyFormat().getFormatInfo())) {
+      accessValidator.checkSubjectAccess(securityContext,
+          KsqlConstants.getSRSubject(ksqlTopic.getKafkaTopicName(), true), aclOperation);
+    }
+
+    if (formatSupportsSchemaInference(ksqlTopic.getValueFormat().getFormatInfo())) {
+      accessValidator.checkSubjectAccess(securityContext,
+          KsqlConstants.getSRSubject(ksqlTopic.getKafkaTopicName(), false), aclOperation);
+    }
+  }
+
+  private static boolean formatSupportsSchemaInference(final FormatInfo format) {
+    return FormatFactory.of(format).supportsFeature(SerdeFeature.SCHEMA_INFERENCE);
   }
 }

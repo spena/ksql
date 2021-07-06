@@ -16,6 +16,7 @@
 package io.confluent.ksql.security;
 
 import io.confluent.ksql.exception.KsqlTopicAuthorizationException;
+import io.confluent.ksql.schema.registry.SchemaRegistryUtil;
 import java.util.Collections;
 import java.util.Set;
 import org.apache.kafka.common.acl.AclOperation;
@@ -26,7 +27,7 @@ import org.apache.kafka.common.acl.AclOperation;
  */
 public class KsqlBackendAccessValidator implements KsqlAccessValidator {
   @Override
-  public void checkAccess(
+  public void checkTopicAccess(
       final KsqlSecurityContext securityContext,
       final String topicName,
       final AclOperation operation
@@ -40,6 +41,25 @@ public class KsqlBackendAccessValidator implements KsqlAccessValidator {
       // This error message is similar to what Kafka throws when it cannot access the topic
       // due to an authorization error. I used this message to keep a consistent message.
       throw new KsqlTopicAuthorizationException(operation, Collections.singleton(topicName));
+    }
+  }
+
+  @Override
+  public void checkSubjectAccess(
+      final KsqlSecurityContext securityContext,
+      final String subjectName,
+      final AclOperation operation
+  ) {
+    if (operation == AclOperation.READ) {
+      // getLatestSchema() will throw an authorization exception if the operation is denied, or
+      // another exception if other error happened while connecting to SR
+      SchemaRegistryUtil.getLatestSchema(
+          securityContext.getServiceContext().getSchemaRegistryClient(),
+          subjectName
+      );
+    } else {
+      throw new IllegalArgumentException(
+          "Only Read permissions can be checked from Schema Registry. You provided " + operation);
     }
   }
 }
